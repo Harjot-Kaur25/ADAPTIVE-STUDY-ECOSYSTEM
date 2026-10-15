@@ -1,10 +1,6 @@
-# Adaptive Study Ecosystem — backend handoff
+# Adaptive Study Ecosystem 
 
-This is the **backend/ML component only**. It has no HTML, CSS, JavaScript,
-frontend, or dashboard routes. The Flask JSON API stores student data in the
-existing Supabase project, predicts subject priorities with the saved
-scikit-learn model, schedules sessions inside declared availability, and
-returns educational-provider search suggestions without inventing lesson URLs.
+Adaptive Study Ecosystem is an AI-powered study management system that personalizes learning through ML-based subject priority prediction, availability-aware study scheduling, deadline tracking, session progress monitoring, and educational resource recommendations. It uses Flask for backend services, Supabase for authentication and data storage, and a trained scikit-learn model to support smarter, more organized study planning.
 
 ## Current Supabase schema and migration
 
