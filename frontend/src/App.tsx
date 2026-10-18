@@ -1,29 +1,26 @@
-import './App.css'
-import AIPersonalization from './components/AIPersonalization'
-import CTA from './components/CTA'
-import DashboardShowcase from './components/DashboardShowcase'
-import FeaturesGrid from './components/FeaturesGrid'
-import Footer from './components/Footer'
-import Hero from './components/Hero'
-import HowItWorks from './components/HowItWorks'
-import Navbar, { WorkspaceHeader } from './components/Navbar'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import LandingPage from './pages/LandingPage';
+import AuthPage from './pages/AuthPage';
+import DashboardPage from './pages/DashboardPage';
+import SettingsPage from './pages/SettingsPage';
+import BurnoutPage from './pages/BurnoutPage';
+import ScrollEffects from './components/ScrollEffects';
 
-function App() {
-  return (
-    <div className="app-shell">
-      <Navbar />
-      <main className="workspace">
-        <WorkspaceHeader />
-        <Hero />
-        <AIPersonalization />
-        <HowItWorks />
-        <FeaturesGrid />
-        <DashboardShowcase />
-        <CTA />
-        <Footer />
-      </main>
-    </div>
-  )
+function RouteFrame() {
+  const location = useLocation();
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [location.pathname]);
+  return <><ScrollEffects /><Routes>
+    <Route path="/" element={<LandingPage />} />
+    <Route path="/login" element={<AuthPage />} />
+    <Route path="/dashboard" element={<DashboardPage />} />
+    <Route path="/settings" element={<SettingsPage />} />
+    <Route path="/burnout" element={<BurnoutPage />} />
+    <Route path="/signup" element={<AuthPage />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes></>;
 }
 
-export default App
+export default function App() {
+  return <BrowserRouter><RouteFrame /></BrowserRouter>;
+}

@@ -1,0 +1,1482 @@
+.burnout-app.site-shell {
+  min-height: 100vh;
+  overflow-x: clip;
+  overflow-y: visible;
+  color: #e8eef4;
+}
+
+.burnout-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  min-height: 100vh;
+  font-family: "DM Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.burnout-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  padding: 19px 14px 13px;
+  border-right: 1px solid rgba(176, 203, 222, .11);
+  background: rgba(5, 11, 18, .76);
+  backdrop-filter: blur(20px) saturate(125%);
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+}
+
+.burnout-brand {
+  padding: 2px 5px 25px;
+}
+
+.burnout-brand .brand {
+  gap: 9px;
+}
+
+.burnout-brand .brand-mark {
+  width: 29px;
+  height: 29px;
+  flex-basis: 29px;
+}
+
+.burnout-brand .brand-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.burnout-brand .brand-name-title {
+  font-size: 12px;
+}
+
+.burnout-brand .brand-name small {
+  font-size: 9px;
+}
+
+.burnout-nav-caption,
+.burnout-overline,
+.burnout-muted-label,
+.burnout-score-foot-note,
+.burnout-response-tag,
+.burnout-footer,
+.burnout-sidebar-note > span:last-child,
+.burnout-plan-compare > div > span,
+.burnout-projection > span,
+.burnout-action > div > span,
+.burnout-demo-indicator,
+.burnout-period {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+
+.burnout-nav-caption {
+  padding: 0 9px 11px;
+  color: rgba(173, 193, 209, .46);
+}
+
+.burnout-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.burnout-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: rgba(196, 210, 223, .72);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color .2s ease, background .2s ease, border-color .2s ease;
+}
+
+.burnout-nav-link:hover {
+  color: #edf7fb;
+  background: rgba(153, 194, 214, .07);
+}
+
+.burnout-nav-link.is-active {
+  color: #e8f5f8;
+  border-color: rgba(111, 197, 192, .19);
+  background: linear-gradient(105deg, rgba(64, 145, 151, .17), rgba(83, 139, 174, .08));
+  box-shadow: inset 0 0 22px rgba(58, 153, 155, .045);
+}
+
+.burnout-nav-link.is-active > svg {
+  color: #88d5cd;
+}
+
+.burnout-nav-link.is-active > i {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: #83d1c8;
+  box-shadow: 0 0 12px rgba(106, 216, 205, .55);
+}
+
+.burnout-sidebar-spacer {
+  flex: 1;
+  min-height: 24px;
+}
+
+.burnout-sidebar-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 11px 10px;
+  border: 1px solid rgba(175, 203, 222, .13);
+  border-radius: 11px;
+  background: rgba(167, 194, 209, .045);
+}
+
+.burnout-note-icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid rgba(113, 200, 190, .22);
+  border-radius: 8px;
+  color: #8ed8cd;
+  background: rgba(87, 180, 168, .11);
+}
+
+.burnout-sidebar-note > span:last-child {
+  color: rgba(174, 194, 207, .55);
+  font-size: 8px;
+  letter-spacing: .09em;
+}
+
+.burnout-sidebar-note b {
+  display: block;
+  margin-top: 4px;
+  color: #dae5ec;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.burnout-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 3px 2px;
+  color: #dce7ee;
+  font-size: 11px;
+}
+
+.burnout-avatar {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(157, 195, 215, .27);
+  border-radius: 50%;
+  color: #e8f4f8;
+  background: linear-gradient(145deg, rgba(119, 163, 187, .33), rgba(23, 44, 62, .82));
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.burnout-user small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(164, 184, 199, .59);
+  font-size: 9px;
+}
+
+.burnout-main {
+  min-width: 0;
+  position: relative;
+}
+
+.burnout-topbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(20px, 4.4vw, 64px);
+  border-bottom: 1px solid rgba(182, 208, 224, .09);
+  background: rgba(6, 12, 20, .58);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.burnout-crumb,
+.burnout-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.burnout-crumb {
+  color: rgba(175, 195, 209, .51);
+  font-size: 10px;
+}
+
+.burnout-crumb a {
+  color: rgba(194, 211, 223, .72);
+  text-decoration: none;
+}
+
+.burnout-crumb a:hover {
+  color: #eef7fa;
+}
+
+.burnout-crumb b {
+  color: #dbe7ed;
+  font-weight: 500;
+}
+
+.burnout-topbar-right {
+  gap: 15px;
+}
+
+.burnout-demo-indicator,
+.burnout-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(171, 196, 209, .65);
+  font-size: 8px;
+}
+
+.burnout-demo-indicator i,
+.burnout-trend-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #90d8bb;
+  box-shadow: 0 0 9px rgba(117, 220, 186, .55);
+}
+
+.burnout-topbar-date {
+  color: rgba(174, 192, 204, .5);
+  font-size: 8px;
+  letter-spacing: .11em;
+}
+
+.burnout-avatar--small {
+  width: 25px;
+  height: 25px;
+  font-size: 8px;
+}
+
+.burnout-content {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 31px clamp(20px, 4.4vw, 64px) 24px;
+}
+
+.burnout-page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 1px 0 23px;
+}
+
+.burnout-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #9bcacb;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .14em;
+}
+
+.burnout-page-heading h1 {
+  margin: 9px 0 5px;
+  color: #edf4f7;
+  font-family: "Libre Baskerville", Baskerville, Georgia, serif;
+  font-size: clamp(28px, 3.1vw, 39px);
+  font-weight: 400;
+  letter-spacing: -.045em;
+  line-height: 1.2;
+}
+
+.burnout-page-heading p {
+  margin: 0;
+  color: rgba(179, 197, 210, .66);
+  font-size: 12px;
+}
+
+.burnout-period {
+  margin-bottom: 5px;
+  padding: 9px 11px;
+  border: 1px solid rgba(177, 204, 220, .13);
+  border-radius: 9px;
+  color: rgba(189, 206, 218, .7);
+  background: rgba(155, 189, 207, .04);
+  letter-spacing: .08em;
+}
+
+.burnout-panel {
+  min-width: 0;
+  border: 1px solid rgba(177, 205, 221, .13);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(14, 26, 39, .28), rgba(7, 15, 25, .22));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .14), inset 0 1px 0 rgba(231, 244, 250, .025);
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+}
+
+.burnout-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, .87fr) minmax(0, 1.6fr);
+  gap: 14px;
+}
+
+.burnout-score-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 22px 16px;
+  background: radial-gradient(ellipse at 50% 23%, rgba(185, 148, 91, .12), transparent 64%), linear-gradient(145deg, rgba(18, 29, 40, .3), rgba(7, 15, 23, .24));
+}
+
+.burnout-score-panel::after {
+  position: absolute;
+  top: -60px;
+  right: -48px;
+  width: 130px;
+  height: 130px;
+  border: 1px solid rgba(202, 174, 125, .08);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 0 18px rgba(202, 174, 125, .018), 0 0 0 36px rgba(202, 174, 125, .012);
+  pointer-events: none;
+}
+
+.burnout-panel-heading,
+.burnout-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.burnout-overline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(171, 194, 208, .58);
+  font-size: 8px;
+  letter-spacing: .13em;
+}
+
+.burnout-panel-heading h2,
+.burnout-section-head h2 {
+  margin: 6px 0 0;
+  color: #e9f1f5;
+  font-family: "Libre Baskerville", Baskerville, Georgia, serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -.02em;
+}
+
+.burnout-info-mark {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid rgba(177, 202, 218, .15);
+  border-radius: 50%;
+  color: rgba(180, 200, 212, .62);
+}
+
+.burnout-gauge-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 203px;
+  margin-top: 3px;
+}
+
+.burnout-gauge {
+  width: min(224px, 100%);
+  height: 135px;
+  overflow: visible;
+}
+
+.burnout-gauge-track,
+.burnout-gauge-value {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.burnout-gauge-track {
+  stroke: rgba(179, 199, 211, .13);
+}
+
+.burnout-gauge-value {
+  stroke: url(#burnout-gauge-gradient);
+  filter: drop-shadow(0 0 6px rgba(110, 210, 194, .18));
+}
+
+.burnout-gauge-needle {
+  fill: #a7dacf;
+  filter: drop-shadow(0 0 5px rgba(112, 216, 199, .58));
+}
+
+.burnout-gauge-score {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  transform: translateX(-50%);
+}
+
+.burnout-gauge-score strong {
+  color: #f0f2eb;
+  font-size: 48px;
+  font-weight: 500;
+  letter-spacing: -.08em;
+  line-height: .95;
+}
+
+.burnout-gauge-score span {
+  color: rgba(184, 199, 207, .59);
+  font-size: 12px;
+}
+
+.burnout-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -5px;
+  padding: 5px 9px;
+  border: 1px solid rgba(224, 183, 111, .28);
+  border-radius: 20px;
+  color: #e9c78d;
+  background: rgba(176, 123, 49, .12);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.burnout-risk-pill i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e7b96e;
+  box-shadow: 0 0 7px rgba(231, 185, 110, .48);
+}
+
+.burnout-gauge-range {
+  margin-top: 6px;
+  color: rgba(176, 195, 207, .52);
+  font-size: 9px;
+}
+
+.burnout-score-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(176, 199, 214, .1);
+}
+
+.burnout-score-foot > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #95d1c0;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.burnout-score-foot small,
+.burnout-score-foot-note {
+  color: rgba(168, 188, 201, .54);
+  font-size: 9px;
+}
+
+.burnout-score-foot-note {
+  margin-left: auto;
+}
+
+.burnout-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.burnout-signal-card {
+  position: relative;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 17px 15px 14px;
+  overflow: hidden;
+  transition: transform .22s ease, border-color .22s ease, background .22s ease;
+}
+
+.burnout-signal-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(131, 203, 201, .24);
+  background-color: rgba(18, 36, 50, .28);
+}
+
+.burnout-signal-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  margin-bottom: 20px;
+  place-items: center;
+  border: 1px solid rgba(166, 200, 216, .15);
+  border-radius: 10px;
+  color: #a5d9d4;
+  background: rgba(92, 163, 164, .1);
+}
+
+.burnout-signal-card--intensity .burnout-signal-icon {
+  color: #e5bc7d;
+  background: rgba(190, 139, 68, .12);
+}
+
+.burnout-signal-card--missed .burnout-signal-icon {
+  color: #9fc8e1;
+  background: rgba(80, 144, 181, .12);
+}
+
+.burnout-signal-card--recovery .burnout-signal-icon {
+  color: #a9d9cb;
+}
+
+.burnout-signal-card .burnout-overline {
+  min-height: 20px;
+  font-size: 8px;
+  letter-spacing: .09em;
+}
+
+.burnout-signal-card > strong {
+  margin-top: 8px;
+  color: #edf4f6;
+  font-size: clamp(23px, 2.25vw, 33px);
+  font-weight: 500;
+  letter-spacing: -.06em;
+  white-space: nowrap;
+}
+
+.burnout-signal-card > strong small {
+  margin-left: 4px;
+  color: rgba(176, 195, 207, .67);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.burnout-signal-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 7px;
+  color: rgba(177, 196, 207, .58);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.burnout-signal-card--intensity .burnout-signal-note svg {
+  color: #dbb77c;
+}
+
+.burnout-behavior {
+  margin-top: 14px;
+  padding: 18px 20px 16px;
+}
+
+.burnout-section-head {
+  align-items: center;
+}
+
+.burnout-muted-label {
+  color: rgba(167, 189, 203, .47);
+  font-size: 8px;
+}
+
+.burnout-behavior-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 17px;
+}
+
+.burnout-behavior-stat {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 5px 12px;
+  padding: 0 18px;
+  border-left: 1px solid rgba(176, 199, 214, .11);
+}
+
+.burnout-behavior-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.burnout-behavior-stat > span {
+  grid-column: 1 / -1;
+  color: rgba(177, 196, 207, .65);
+  font-size: 10px;
+}
+
+.burnout-behavior-stat strong {
+  color: #eaf2f6;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -.06em;
+}
+
+.burnout-behavior-stat strong small {
+  margin-left: 3px;
+  color: rgba(175, 196, 208, .59);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.burnout-behavior-stat em {
+  color: rgba(163, 184, 197, .48);
+  font-size: 9px;
+  font-style: normal;
+  text-align: right;
+}
+
+.burnout-behavior-stat.tone-amber strong { color: #e6c68f; }
+.burnout-behavior-stat.tone-mint strong { color: #9ed7c5; }
+.burnout-behavior-stat.tone-sky strong { color: #a8cfe5; }
+
+.burnout-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, .95fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.burnout-trend-panel,
+.burnout-breakdown-panel,
+.burnout-adaptive-panel,
+.burnout-actions-panel {
+  padding: 19px 20px 16px;
+}
+
+.burnout-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(113, 194, 168, .17);
+  border-radius: 8px;
+  color: #a8d8c5;
+  background: rgba(92, 173, 145, .08);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.burnout-trend-badge i {
+  width: 5px;
+  height: 5px;
+}
+
+.burnout-panel-subtitle {
+  margin: 9px 0 0;
+  color: rgba(174, 194, 207, .62);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.burnout-trend-svg {
+  display: block;
+  width: 100%;
+  height: 196px;
+  margin-top: 4px;
+  overflow: visible;
+}
+
+.burnout-chart-gridline {
+  stroke: rgba(174, 200, 216, .1);
+  stroke-dasharray: 2 5;
+  stroke-width: 1;
+}
+
+.burnout-chart-axis,
+.burnout-chart-day {
+  fill: rgba(165, 187, 201, .46);
+  font-family: "DM Sans", sans-serif;
+  font-size: 9px;
+}
+
+.burnout-chart-day.is-current {
+  fill: #b9e4dc;
+  font-weight: 700;
+}
+
+.burnout-trend-area {
+  stroke: none;
+}
+
+.burnout-trend-line {
+  fill: none;
+  stroke: #8bd3c8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 5px rgba(117, 211, 196, .27));
+}
+
+.burnout-trend-dot {
+  fill: #a5d9ce;
+  stroke: #0d1c27;
+  stroke-width: 2;
+}
+
+.burnout-trend-dot.is-current {
+  fill: #e4bd79;
+  stroke: rgba(230, 190, 125, .25);
+  stroke-width: 5;
+  paint-order: stroke fill;
+}
+
+.burnout-current-value {
+  fill: #e6c889;
+  font-family: "DM Sans", sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+
+.burnout-chart-foot {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 9px;
+  border-top: 1px solid rgba(176, 199, 214, .1);
+  color: rgba(166, 187, 200, .5);
+  font-size: 9px;
+}
+
+.burnout-chart-foot span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.burnout-chart-foot i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8bd3c8;
+}
+
+.burnout-breakdown-total {
+  color: #e6c78e;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.burnout-breakdown-total small {
+  color: rgba(177, 194, 203, .53);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.burnout-factor-list {
+  display: grid;
+  gap: 17px;
+  margin-top: 22px;
+}
+
+.burnout-factor-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: #dce7ec;
+  font-size: 10px;
+}
+
+.burnout-factor-top > span small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(164, 186, 199, .49);
+  font-size: 9px;
+}
+
+.burnout-factor-top b {
+  color: rgba(210, 224, 231, .81);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.burnout-factor-top b small {
+  margin-left: 3px;
+  color: rgba(164, 186, 199, .52);
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.burnout-factor-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgba(179, 200, 213, .1);
+}
+
+.burnout-factor-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a6d8ca, #78c7c0);
+}
+
+.burnout-factor-track i.tone-amber { background: linear-gradient(90deg, #d3a765, #ead09d); }
+.burnout-factor-track i.tone-blue { background: linear-gradient(90deg, #609bc1, #9fcbe0); }
+.burnout-factor-track i.tone-sky { background: linear-gradient(90deg, #729fc3, #aacce2); }
+
+.burnout-breakdown-foot {
+  display: block;
+  margin-top: 19px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(176, 199, 214, .1);
+  color: rgba(164, 184, 197, .48);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.burnout-response-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, .9fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.burnout-adaptive-panel {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 80% 12%, rgba(62, 137, 159, .14), transparent 43%), linear-gradient(145deg, rgba(12, 29, 40, .3), rgba(6, 15, 25, .24));
+}
+
+.burnout-response-tag {
+  padding: 6px 8px;
+  border: 1px solid rgba(126, 196, 190, .18);
+  border-radius: 7px;
+  color: #a6d7d1;
+  font-size: 7px;
+  letter-spacing: .1em;
+}
+
+.burnout-plan-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(176, 202, 218, .11);
+  border-radius: 11px;
+  background: rgba(2, 9, 15, .2);
+}
+
+.burnout-plan-compare > svg {
+  color: #8bcfc6;
+}
+
+.burnout-plan-compare > div > span {
+  display: block;
+  color: rgba(164, 187, 200, .49);
+  font-size: 8px;
+}
+
+.burnout-plan-compare strong {
+  display: block;
+  margin-top: 6px;
+  color: #e3edf1;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -.04em;
+}
+
+.burnout-plan-compare strong small {
+  color: rgba(175, 196, 207, .65);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.burnout-plan-compare em {
+  display: block;
+  margin-top: 3px;
+  color: rgba(170, 191, 204, .58);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.burnout-plan-next strong {
+  color: #a9ddd0;
+}
+
+.burnout-projection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 13px 0;
+  color: rgba(169, 191, 203, .58);
+  font-size: 9px;
+}
+
+.burnout-projection > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(166, 193, 205, .53);
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.burnout-projection > span svg {
+  color: #92cfc5;
+}
+
+.burnout-projection strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #b6dfd2;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.burnout-projection small {
+  margin-left: auto;
+  color: rgba(168, 189, 201, .46);
+  font-size: 8px;
+  text-align: right;
+}
+
+.burnout-primary-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(132, 205, 195, .3);
+  border-radius: 8px;
+  color: #d5eeea;
+  background: linear-gradient(100deg, rgba(70, 151, 146, .24), rgba(57, 117, 148, .19));
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.burnout-primary-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 224, 215, .48);
+  background: linear-gradient(100deg, rgba(83, 173, 163, .32), rgba(69, 139, 171, .25));
+}
+
+.burnout-local-confirmation {
+  margin-left: 9px;
+  color: rgba(173, 210, 197, .67);
+  font-size: 9px;
+}
+
+.burnout-action-count {
+  display: grid;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  place-items: center;
+  border: 1px solid rgba(174, 200, 215, .14);
+  border-radius: 8px;
+  color: rgba(183, 203, 214, .72);
+  font-size: 9px;
+}
+
+.burnout-action-list {
+  display: grid;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.burnout-action {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(174, 198, 211, .09);
+}
+
+.burnout-action:first-child {
+  border-top: 0;
+}
+
+.burnout-action > button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  place-items: center;
+  border: 1px solid rgba(173, 202, 217, .28);
+  border-radius: 6px;
+  color: #bde8de;
+  background: rgba(120, 184, 177, .07);
+  cursor: pointer;
+  transition: background .2s ease, border-color .2s ease;
+}
+
+.burnout-action > button:hover,
+.burnout-action.is-complete > button {
+  border-color: rgba(142, 213, 197, .48);
+  background: rgba(110, 183, 162, .2);
+}
+
+.burnout-action strong {
+  color: #e2ecf0;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.burnout-action p {
+  margin: 3px 0 5px;
+  color: rgba(170, 190, 202, .56);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.burnout-action > div > span {
+  color: rgba(153, 181, 196, .47);
+  font-size: 7px;
+}
+
+.burnout-action.is-complete strong {
+  color: #a9c9be;
+}
+
+.burnout-explanation {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 36px;
+  gap: 13px;
+  align-items: start;
+  margin-top: 14px;
+  padding: 18px 20px;
+  border: 1px solid rgba(174, 204, 220, .15);
+  border-radius: 14px;
+  background: linear-gradient(100deg, rgba(24, 40, 48, .28), rgba(9, 18, 27, .22));
+  box-shadow: inset 0 1px 0 rgba(229, 242, 248, .025);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.burnout-explanation-icon,
+.burnout-explanation-mark {
+  display: grid;
+  place-items: center;
+  color: #a6d6cd;
+}
+
+.burnout-explanation-icon {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(138, 201, 190, .19);
+  border-radius: 10px;
+  background: rgba(103, 173, 158, .08);
+}
+
+.burnout-explanation h2 {
+  margin: 5px 0 6px;
+  color: #e7eef1;
+  font-family: "Libre Baskerville", Baskerville, Georgia, serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -.02em;
+}
+
+.burnout-explanation p {
+  max-width: 820px;
+  margin: 0;
+  color: rgba(178, 196, 207, .69);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.burnout-disclaimer {
+  display: block;
+  margin-top: 8px;
+  color: rgba(157, 182, 196, .45);
+  font-size: 8px;
+}
+
+.burnout-explanation-mark {
+  color: rgba(218, 183, 124, .55);
+}
+
+.burnout-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 2px 3px;
+  color: rgba(148, 171, 185, .37);
+  font-size: 7px;
+  letter-spacing: .12em;
+}
+
+.burnout-footer span:last-child {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@media (max-width: 1120px) {
+  .burnout-layout { grid-template-columns: 198px minmax(0, 1fr); }
+  .burnout-content { padding-right: 25px; padding-left: 25px; }
+  .burnout-hero-grid { grid-template-columns: minmax(250px, .8fr) minmax(0, 1.45fr); }
+  .burnout-signal-grid { gap: 8px; }
+  .burnout-signal-card { padding-right: 11px; padding-left: 11px; }
+  .burnout-analysis-grid { grid-template-columns: minmax(0, 1.25fr) minmax(280px, .95fr); }
+}
+
+@media (max-width: 900px) {
+  .burnout-layout { grid-template-columns: 72px minmax(0, 1fr); }
+  .burnout-sidebar { align-items: center; padding-right: 8px; padding-left: 8px; }
+  .burnout-brand { padding: 2px 0 23px; }
+  .burnout-brand .brand-name,
+  .burnout-nav-caption,
+  .burnout-nav-link > span,
+  .burnout-sidebar-note > span:last-child,
+  .burnout-user > span:last-child { display: none; }
+  .burnout-nav-link { width: 42px; justify-content: center; padding: 0; }
+  .burnout-nav-link.is-active > i { left: -7px; }
+  .burnout-sidebar-note { justify-content: center; padding: 7px; }
+  .burnout-user { justify-content: center; }
+  .burnout-topbar { padding-right: 22px; padding-left: 22px; }
+  .burnout-content { padding-right: 22px; padding-left: 22px; }
+  .burnout-hero-grid { grid-template-columns: minmax(240px, .85fr) minmax(0, 1.4fr); }
+  .burnout-signal-grid { grid-template-columns: 1fr; }
+  .burnout-signal-card { min-height: 105px; padding: 12px 13px; }
+  .burnout-signal-icon { margin-bottom: 8px; }
+  .burnout-signal-card > strong { margin-top: 1px; font-size: 25px; }
+  .burnout-signal-note { margin-top: 3px; }
+}
+
+@media (max-width: 680px) {
+  .burnout-layout { display: block; }
+  .burnout-sidebar { position: relative; z-index: 6; display: block; width: 100%; height: auto; padding: 10px 13px 9px; border-right: 0; border-bottom: 1px solid rgba(176, 203, 222, .11); }
+  .burnout-brand { padding: 0 3px 10px; }
+  .burnout-brand .brand-name { display: flex; }
+  .burnout-nav-caption,
+  .burnout-sidebar-note,
+  .burnout-user,
+  .burnout-sidebar-spacer { display: none; }
+  .burnout-nav { display: flex; flex-wrap: wrap; gap: 4px; overflow: visible; padding-bottom: 2px; }
+  .burnout-nav-link { width: auto; min-width: 38px; min-height: 34px; flex: 0 0 auto; gap: 7px; padding: 0 9px; }
+  .burnout-nav-link > span { display: inline; font-size: 10px; }
+  .burnout-nav-link.is-active > i { top: auto; right: 10px; bottom: -1px; left: 10px; width: auto; height: 2px; }
+  .burnout-topbar { position: relative; height: 45px; padding: 0 15px; }
+  .burnout-topbar-date { display: none; }
+  .burnout-content { padding: 22px 14px 18px; }
+  .burnout-page-heading { align-items: flex-start; margin-bottom: 16px; }
+  .burnout-page-heading h1 { font-size: 29px; }
+  .burnout-page-heading p { max-width: 260px; font-size: 10px; line-height: 1.5; }
+  .burnout-period { gap: 5px; padding: 7px; font-size: 7px; }
+  .burnout-hero-grid,
+  .burnout-analysis-grid,
+  .burnout-response-grid { grid-template-columns: minmax(0, 1fr); }
+  .burnout-score-panel { min-height: 300px; }
+  .burnout-signal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .burnout-signal-card { min-height: 130px; padding: 11px 9px; }
+  .burnout-signal-icon { width: 27px; height: 27px; margin-bottom: 10px; }
+  .burnout-signal-card .burnout-overline { min-height: 20px; font-size: 7px; }
+  .burnout-signal-card > strong { font-size: 20px; }
+  .burnout-signal-card > strong small { display: block; margin: 2px 0 0; font-size: 8px; }
+  .burnout-signal-note { font-size: 8px; }
+  .burnout-behavior { padding: 15px 13px; }
+  .burnout-behavior-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 0; }
+  .burnout-behavior-stat { padding: 0 10px; }
+  .burnout-behavior-stat:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .burnout-behavior-stat:nth-child(even) { padding-right: 0; }
+  .burnout-trend-panel,
+  .burnout-breakdown-panel,
+  .burnout-adaptive-panel,
+  .burnout-actions-panel { padding: 15px 13px; }
+  .burnout-trend-svg { height: 168px; }
+  .burnout-section-head h2 { font-size: 14px; }
+  .burnout-explanation { grid-template-columns: 29px minmax(0, 1fr); gap: 9px; padding: 14px 12px; }
+  .burnout-explanation-icon { width: 28px; height: 28px; }
+  .burnout-explanation-mark { display: none; }
+  .burnout-local-confirmation { display: block; margin: 7px 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burnout-app *,
+  .burnout-app *::before,
+  .burnout-app *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* Restrained page motion; the shared site-shell supplies the existing Aurora parallax. */
+.burnout-page-heading[data-burnout-reveal] { --burnout-reveal-delay: 0ms; }
+.burnout-hero-grid[data-burnout-reveal] { --burnout-reveal-delay: 90ms; }
+.burnout-behavior[data-burnout-reveal] { --burnout-reveal-delay: 150ms; }
+.burnout-analysis-grid[data-burnout-reveal] { --burnout-reveal-delay: 190ms; }
+.burnout-response-grid[data-burnout-reveal] { --burnout-reveal-delay: 230ms; }
+.burnout-explanation[data-burnout-reveal] { --burnout-reveal-delay: 270ms; }
+
+.burnout-app [data-burnout-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  transition: opacity 760ms cubic-bezier(.2, .65, .25, 1), transform 760ms cubic-bezier(.2, .65, .25, 1);
+  transition-delay: var(--burnout-reveal-delay, 0ms);
+}
+.burnout-app [data-burnout-reveal].is-visible { opacity: 1; transform: translate3d(0, 0, 0); }
+.burnout-panel:not(.burnout-signal-card) { transition: transform 360ms cubic-bezier(.2, .65, .25, 1); }
+
+@media (hover: hover) and (pointer: fine) {
+  .burnout-panel:hover { transform: translate3d(0, -1px, 0); }
+}
+
+.burnout-gauge-value {
+  stroke-dasharray: 0 100;
+  transition: stroke-dasharray 1350ms cubic-bezier(.2, .72, .22, 1) 120ms;
+}
+.burnout-hero-grid.is-visible .burnout-gauge-value { stroke-dasharray: var(--burnout-gauge-dash, 42 100); }
+
+.burnout-trend-line {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  transition: stroke-dashoffset 1350ms cubic-bezier(.2, .72, .22, 1) 120ms;
+}
+.burnout-trend-area { opacity: 0; transition: opacity 680ms ease 520ms; }
+.burnout-trend-dot {
+  opacity: 0;
+  transform: scale(.72);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 320ms ease 980ms, transform 420ms cubic-bezier(.2, .7, .25, 1) 980ms;
+}
+.burnout-analysis-grid.is-visible .burnout-trend-line { stroke-dashoffset: 0; }
+.burnout-analysis-grid.is-visible .burnout-trend-area { opacity: 1; }
+.burnout-analysis-grid.is-visible .burnout-trend-dot { opacity: 1; transform: scale(1); }
+
+.burnout-factor-track i {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 900ms cubic-bezier(.2, .72, .22, 1);
+}
+.burnout-analysis-grid.is-visible .burnout-factor-track i { transform: scaleX(1); }
+.burnout-analysis-grid.is-visible .burnout-factor:nth-child(1) .burnout-factor-track i { transition-delay: 100ms; }
+.burnout-analysis-grid.is-visible .burnout-factor:nth-child(2) .burnout-factor-track i { transition-delay: 190ms; }
+.burnout-analysis-grid.is-visible .burnout-factor:nth-child(3) .burnout-factor-track i { transition-delay: 280ms; }
+.burnout-analysis-grid.is-visible .burnout-factor:nth-child(4) .burnout-factor-track i { transition-delay: 370ms; }
+
+.burnout-plan-next {
+  opacity: .78;
+  transform: translate3d(8px, 0, 0);
+  transition: opacity 560ms cubic-bezier(.2, .65, .25, 1), transform 680ms cubic-bezier(.2, .65, .25, 1);
+}
+.burnout-adaptive-panel.is-plan-applied .burnout-plan-next { opacity: 1; transform: translate3d(0, 0, 0); }
+.burnout-plan-compare > svg { transition: transform 560ms cubic-bezier(.2, .65, .25, 1); }
+.burnout-adaptive-panel.is-plan-applied .burnout-plan-compare > svg { transform: translate3d(3px, 0, 0); }
+.burnout-local-confirmation { animation: burnoutConfirmationIn 420ms cubic-bezier(.2, .65, .25, 1) both; }
+
+@keyframes burnoutConfirmationIn {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burnout-app [data-burnout-reveal] { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .burnout-app .burnout-panel,
+  .burnout-app .burnout-gauge-value,
+  .burnout-app .burnout-trend-line,
+  .burnout-app .burnout-trend-area,
+  .burnout-app .burnout-trend-dot,
+  .burnout-app .burnout-factor-track i,
+  .burnout-app .burnout-plan-next,
+  .burnout-app .burnout-plan-compare > svg,
+  .burnout-app .burnout-local-confirmation { animation: none !important; transition: none !important; }
+  .burnout-app .burnout-gauge-value { stroke-dasharray: var(--burnout-gauge-dash, 42 100) !important; }
+  .burnout-app .burnout-trend-line { stroke-dashoffset: 0 !important; }
+  .burnout-app .burnout-trend-area,
+  .burnout-app .burnout-trend-dot { opacity: 1 !important; }
+  .burnout-app .burnout-trend-dot { transform: none !important; }
+  .burnout-app .burnout-factor-track i { transform: scaleX(1) !important; }
+  .burnout-app .burnout-plan-next { opacity: 1 !important; transform: none !important; }
+  .burnout-app .burnout-plan-compare > svg { transform: none !important; }
+  .burnout-app .burnout-panel { transform: none !important; }
+}
+
+
+/* Production refinement: improve rhythm and legibility without changing the established palette or glass surfaces. */
+.burnout-topbar { height: 58px; }
+.burnout-crumb { font-size: 11px; }
+.burnout-content { padding-top: 36px; padding-bottom: 30px; }
+.burnout-page-heading { gap: 24px; margin-bottom: 28px; }
+.burnout-page-heading h1 { font-size: clamp(31px, 3.25vw, 42px); line-height: 1.12; }
+.burnout-page-heading p { max-width: 54ch; font-size: 13px; line-height: 1.6; }
+.burnout-overline { font-size: 9px; letter-spacing: .11em; }
+.burnout-demo-indicator,
+.burnout-topbar-date,
+.burnout-period { font-size: 9px; }
+.burnout-period { padding: 10px 12px; }
+.burnout-nav { gap: 5px; }
+.burnout-nav-link { min-height: 41px; }
+.burnout-panel-heading h2,
+.burnout-section-head h2,
+.burnout-explanation h2 { font-size: 15px; line-height: 1.4; }
+.burnout-hero-grid,
+.burnout-analysis-grid,
+.burnout-response-grid { gap: 16px; }
+.burnout-score-panel { padding: 22px 23px 18px; }
+.burnout-signal-card { justify-content: center; padding: 20px 17px; }
+.burnout-signal-icon { margin-bottom: 16px; }
+.burnout-signal-card .burnout-overline { min-height: 20px; font-size: 9px; }
+.burnout-signal-note { font-size: 10px; }
+.burnout-behavior { margin-top: 16px; padding: 22px 22px 20px; }
+.burnout-behavior-grid { margin-top: 20px; }
+.burnout-behavior-stat > span { font-size: 11px; }
+.burnout-behavior-stat strong { font-size: 27px; }
+.burnout-behavior-stat em { font-size: 10px; }
+.burnout-analysis-grid,
+.burnout-response-grid { margin-top: 16px; }
+.burnout-trend-panel,
+.burnout-breakdown-panel,
+.burnout-adaptive-panel,
+.burnout-actions-panel { padding: 22px 22px 18px; }
+.burnout-panel-subtitle { font-size: 11px; line-height: 1.65; }
+.burnout-trend-svg { height: 204px; }
+.burnout-chart-axis,
+.burnout-chart-day { font-size: 10px; }
+.burnout-chart-foot { padding-top: 11px; font-size: 10px; }
+.burnout-breakdown-total { font-size: 22px; }
+.burnout-factor-list { gap: 19px; margin-top: 24px; }
+.burnout-factor-top { font-size: 11px; }
+.burnout-factor-top > span small { font-size: 10px; }
+.burnout-factor-top b { font-size: 11px; }
+.burnout-factor-top b small { font-size: 9px; }
+.burnout-factor-track { height: 5px; }
+.burnout-breakdown-foot { font-size: 9px; }
+.burnout-plan-compare { gap: 14px; margin-top: 20px; padding: 15px 16px; }
+.burnout-plan-compare > div > span { font-size: 9px; }
+.burnout-plan-compare strong { font-size: 21px; }
+.burnout-plan-compare em { font-size: 10px; }
+.burnout-projection { font-size: 10px; }
+.burnout-projection > span { font-size: 8px; }
+.burnout-primary-button { min-height: 40px; padding: 0 14px; font-size: 11px; }
+.burnout-action { grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 12px 0; transition: transform 220ms cubic-bezier(.2, .65, .25, 1); }
+.burnout-action > button { width: 22px; height: 22px; }
+.burnout-action strong { font-size: 11px; }
+.burnout-action p { font-size: 10px; line-height: 1.55; }
+.burnout-action > div > span { font-size: 8px; }
+.burnout-explanation { gap: 15px; margin-top: 16px; padding: 20px 22px; }
+.burnout-explanation p { font-size: 11px; line-height: 1.75; }
+.burnout-disclaimer { font-size: 9px; }
+.burnout-footer { padding-top: 20px; font-size: 8px; }
+
+.burnout-nav-link:focus-visible,
+.burnout-crumb a:focus-visible,
+.burnout-primary-button:focus-visible,
+.burnout-action > button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .burnout-action:hover { transform: translate3d(2px, 0, 0); }
+  .burnout-action > button:hover { transform: scale(1.04); }
+}
+.burnout-action > button:active,
+.burnout-primary-button:active { transform: scale(.985); }
+
+@media (max-width: 760px) and (min-width: 681px) {
+  .burnout-analysis-grid,
+  .burnout-response-grid { grid-template-columns: minmax(0, 1fr); }
+  .burnout-trend-svg { height: 190px; }
+}
+
+@media (max-width: 680px) {
+  .burnout-topbar { height: 48px; }
+  .burnout-content { padding: 22px 14px 22px; }
+  .burnout-page-heading { gap: 12px; margin-bottom: 19px; }
+  .burnout-page-heading h1 { font-size: clamp(29px, 8vw, 33px); line-height: 1.16; }
+  .burnout-page-heading p { max-width: 33ch; font-size: 11px; line-height: 1.55; }
+  .burnout-period { padding: 8px; font-size: 8px; }
+  .burnout-nav { gap: 5px; row-gap: 4px; }
+  .burnout-nav-link { min-height: 36px; padding: 0 10px; }
+  .burnout-nav-link > span { font-size: 11px; }
+  .burnout-score-panel { padding: 19px 16px 16px; }
+  .burnout-signal-card { min-height: 142px; justify-content: flex-start; padding: 12px 9px; }
+  .burnout-signal-icon { margin-bottom: 11px; }
+  .burnout-signal-card .burnout-overline { min-height: 22px; font-size: 8.5px; line-height: 1.35; }
+  .burnout-signal-card > strong { font-size: 21px; }
+  .burnout-signal-card > strong small { font-size: 9px; }
+  .burnout-signal-note { font-size: 9px; line-height: 1.45; }
+  .burnout-behavior { padding: 17px 15px; }
+  .burnout-behavior-grid { gap: 15px 0; }
+  .burnout-behavior-stat > span { font-size: 11px; }
+  .burnout-behavior-stat strong { font-size: 23px; }
+  .burnout-behavior-stat em { font-size: 9px; }
+  .burnout-trend-panel,
+  .burnout-breakdown-panel,
+  .burnout-adaptive-panel,
+  .burnout-actions-panel { padding: 18px 15px; }
+  .burnout-section-head h2 { font-size: 15px; }
+  .burnout-panel-subtitle { font-size: 10.5px; }
+  .burnout-trend-svg { height: 184px; }
+  .burnout-factor-top { font-size: 10.5px; }
+  .burnout-explanation { padding: 16px 13px; }
+  .burnout-explanation p { font-size: 10.5px; }
+  .burnout-action > button { width: 24px; height: 24px; }
+}
+
+@media (max-width: 380px) {
+  .burnout-topbar { padding-right: 11px; padding-left: 11px; }
+  .burnout-topbar-right { gap: 9px; }
+  .burnout-content { padding-right: 12px; padding-left: 12px; }
+  .burnout-page-heading { gap: 8px; }
+  .burnout-period { gap: 4px; padding: 7px 6px; font-size: 7.5px; }
+  .burnout-signal-card { padding-right: 7px; padding-left: 7px; }
+  .burnout-signal-card > strong { font-size: 19px; }
+  .burnout-signal-card .burnout-overline { letter-spacing: .06em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burnout-app .burnout-primary-button,
+  .burnout-app .burnout-action,
+  .burnout-app .burnout-action > button { transition: none !important; transform: none !important; }
+}
+
+
+.burnout-data-state {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  font-size: 13px;
+  letter-spacing: .02em;
+}
