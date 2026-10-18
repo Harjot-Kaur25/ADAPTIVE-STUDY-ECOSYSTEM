@@ -9,11 +9,30 @@ from typing import Any
 PRIORITY_WEIGHT = {"HIGH": 9, "MEDIUM": 6, "LOW": 3}
 
 
+def local_wall_datetime(value: datetime | None = None) -> datetime:
+    """Normalize instants to backend-local wall time used by stored availability.
+
+    Naive values are already local wall time. Aware values are converted to the
+    host's local timezone before tzinfo is removed, preserving their local date
+    and clock time for the scheduler's date/time-only database fields.
+    """
+    if value is None:
+        value = datetime.now().astimezone()
+    if not isinstance(value, datetime):
+        raise ValueError("now must be a datetime.")
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
+    return value.astimezone().replace(tzinfo=None)
+
+
 def _clock(value: str) -> time:
     try:
-        return time.fromisoformat(value)
+        parsed = time.fromisoformat(value)
     except (TypeError, ValueError) as error:
         raise ValueError("Availability times must use HH:MM or HH:MM:SS format.") from error
+    if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+        raise ValueError("Availability times must be local times without a timezone offset.")
+    return parsed
 
 
 def _deadline_weight(subject: dict[str, Any], on_date: date) -> int:
@@ -70,7 +89,11 @@ def generate_schedule(
     horizon_days: int = 14,
     now: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Return new sessions and work not schedulable inside declared availability."""
+    """Return sessions using local wall time and declared availability.
+
+    Availability and persisted session fields are date/time-only, so this
+    scheduler consistently interprets them in the backend host's local timezone.
+    """
     if preferred_session not in {"1h", "2h", "2-3h"}:
         raise ValueError("preferred_session must be 1h, 2h, or 2-3h.")
     if isinstance(break_minutes, bool) or not 0 <= break_minutes <= 60:
@@ -84,7 +107,7 @@ def generate_schedule(
     if not availability:
         raise ValueError("At least one availability period is needed.")
 
-    current = now or datetime.now().astimezone()
+    current = local_wall_datetime(now)
     first_day = start_date or current.date()
     last_day = first_day + timedelta(days=horizon_days - 1)
     if first_day < current.date():

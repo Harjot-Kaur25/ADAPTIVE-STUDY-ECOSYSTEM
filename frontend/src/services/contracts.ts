@@ -63,6 +63,58 @@ export interface StudentProfileService {
   getProfile(): Promise<StudentProfile>;
   updateProfile(update: StudentProfileUpdate): Promise<StudentProfile>;
   saveAvailability(profile: Pick<StudentProfile, 'preferences'>): Promise<void>;
+  getStudyInput(): Promise<StudentStudyInput | null>;
+  submitStudyInput(input: StudentStudyInput, regenerateFuture?: boolean): Promise<StudyPlanResults>;
+}
+
+export interface StudentStudySubjectInput {
+  subjectId: string;
+  subjectName: string;
+  previousMarks: string;
+  examDate: string;
+  assignmentDeadlines: Array<{ title: string; dueDate: string }>;
+  improvementTopics: string;
+}
+
+export interface StudentAvailabilityInput {
+  id: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface StudentStudyInput {
+  studentName: string;
+  registrationNumber: string;
+  subjects: StudentStudySubjectInput[];
+  availability: StudentAvailabilityInput[];
+  preferredSession: '1h' | '2h' | '2-3h';
+  breakMinutes: string;
+}
+
+export interface StudyResourceRecommendation {
+  subjectId: string;
+  subjectName: string;
+  topic: string | null;
+  scope: 'subject' | 'topic';
+  resources: Array<{
+    provider: string;
+    resourceType: string;
+    searchQuery: string;
+  }>;
+}
+
+export interface UnscheduledWork {
+  subjectName: string;
+  remainingMinutes: number;
+  reason: string;
+}
+
+export interface StudyPlanResults {
+  priorities: StudyPriority[];
+  sessions: CustomSession[];
+  unscheduledWork: UnscheduledWork[];
+  recommendations: StudyResourceRecommendation[];
 }
 
 export interface ScheduleService {
@@ -136,10 +188,16 @@ export interface StudyPriority {
   reason?: string;
   previousMarks?: number;
   priority?: string;
+  classScores?: Record<string, number>;
+  scoreNote?: string;
 }
 
 export interface PriorityService {
   listPriorities(): Promise<StudyPriority[]>;
+}
+
+export interface ResourceRecommendationService {
+  listRecommendations(): Promise<StudyResourceRecommendation[]>;
 }
 
 export interface BurnoutService {
@@ -155,5 +213,6 @@ export interface FrontendServices {
   progress: ProgressService;
   deadlines: DeadlineService;
   priorities: PriorityService;
+  resources: ResourceRecommendationService;
   burnout: BurnoutService;
 }

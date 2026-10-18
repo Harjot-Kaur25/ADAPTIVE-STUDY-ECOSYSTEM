@@ -9,7 +9,7 @@ from uuid import UUID
 from db import DatabaseUnavailable, SupabaseStore, access_token_subject
 from predict import PRIORITY_RANK, predict_subject, validate_exam_date
 from resources import recommend_resources
-from scheduler import generate_schedule
+from scheduler import generate_schedule, local_wall_datetime
 
 
 def _name(value: Any, field: str) -> str:
@@ -89,11 +89,16 @@ class StudentService:
             exam_count = subject.get("exam_count")
             if isinstance(exam_count, bool) or not isinstance(exam_count, int) or not 1 <= exam_count <= 10:
                 raise ValueError(f"subjects[{index}].exam_count must be a whole number from 1 to 10.")
-            completed = subject.get("completed_sessions_count", 0)
-            missed = subject.get("missed_sessions_count", 0)
+            completed = subject.get("completed_sessions_count")
+            missed = subject.get("missed_sessions_count")
             for key, value in (("completed_sessions_count", completed), ("missed_sessions_count", missed)):
+                if value is None:
+                    continue
                 if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 120:
                     raise ValueError(f"subjects[{index}].{key} must be a whole number from 0 to 120.")
+            improvement_topics = subject.get("improvement_topics", "")
+            if not isinstance(improvement_topics, str) or len(improvement_topics.strip()) > 500:
+                raise ValueError(f"subjects[{index}].improvement_topics must be text of at most 500 characters.")
             clean.append(
                 {
                     "subject_id": subject_id,
@@ -102,6 +107,7 @@ class StudentService:
                     "exam_count": exam_count,
                     "completed_sessions_count": completed,
                     "missed_sessions_count": missed,
+                    "improvement_topics": improvement_topics.strip(),
                     "deadlines": subject.get("deadlines", []),
                     "exam_date": subject.get("exam_date"),
                 }
@@ -112,7 +118,11 @@ class StudentService:
 
     @staticmethod
     def _validate_deadlines(
-        student_id: str, subject_id: str, deadlines: Any
+        student_id: str,
+        subject_id: str,
+        deadlines: Any,
+        *,
+        allow_past: bool = False,
     ) -> list[dict[str, Any]]:
         if deadlines is None:
             return []
@@ -122,11 +132,18 @@ class StudentService:
         for index, item in enumerate(deadlines):
             if not isinstance(item, dict):
                 raise ValueError(f"deadlines[{index}] must be an object.")
-            kind = item.get("deadline_type")
-            if kind not in {"exam", "assignment"}:
-                raise ValueError(f"deadlines[{index}].deadline_type must be exam or assignment.")
+            raw_kind = item.get("deadline_type")
+            kind = raw_kind.strip().upper() if isinstance(raw_kind, str) else ""
+            if kind not in {"EXAM", "ASSIGNMENT"}:
+                raise ValueError(
+                    f"deadlines[{index}].deadline_type must be EXAM or ASSIGNMENT."
+                )
             title = _name(item.get("title"), f"deadlines[{index}].title")
-            due = _date(item.get("due_date"), f"deadlines[{index}].due_date")
+            due = _date(
+                item.get("due_date"),
+                f"deadlines[{index}].due_date",
+                allow_past=allow_past,
+            )
             notes = item.get("notes")
             if notes is not None and not isinstance(notes, str):
                 raise ValueError(f"deadlines[{index}].notes must be text.")
@@ -152,11 +169,39 @@ class StudentService:
         if path_student_id is not None and payload.get("student_id", student_id) != student_id:
             raise ValueError("The request student_id does not match the URL.")
         student_name = _name(payload.get("student_name"), "student_name")
+        registration_number = payload.get("registration_number")
+        if registration_number is not None:
+            registration_number = _name(registration_number, "registration_number")
+            if len(registration_number) > 64:
+                raise ValueError("registration_number must contain at most 64 characters.")
         subjects = self._validate_subjects(payload.get("subjects"))
         owner_id = self._require_owner(token)
 
         for subject in subjects:
             self._validate_subject_catalog_entry(subject, owner_id, token)
+        validated_deadlines: dict[str, list[dict[str, Any]]] = {}
+        for subject in subjects:
+            sid = subject["subject_id"]
+            deadlines = self._validate_deadlines(
+                student_id, sid, subject.get("deadlines"), allow_past=True
+            )
+            if subject.get("exam_date"):
+                exam_date, _ = validate_exam_date(subject["exam_date"])
+                deadlines.append(
+                    {
+                        "student_id": student_id,
+                        "subject_id": sid,
+                        "deadline_type": "EXAM",
+                        "title": "Exam",
+                        "due_date": exam_date,
+                        "notes": None,
+                    }
+                )
+            if not any(item["deadline_type"] == "EXAM" for item in deadlines):
+                raise ValueError(
+                    f"subjects[{subject['subject_id']}].exam_date is required."
+                )
+            validated_deadlines[sid] = deadlines
 
         existing_student = self.store.rows(
             "students",
@@ -164,6 +209,14 @@ class StudentService:
             filters={"student_id": _eq(student_id)},
             limit=1,
         )
+        if registration_number is None:
+            registration_number = (
+                existing_student[0].get("registration_number")
+                if existing_student
+                else None
+            )
+        if not isinstance(registration_number, str) or not registration_number.strip():
+            raise ValueError("registration_number is required.")
         self.store.upsert(
             "students",
             {
@@ -171,27 +224,44 @@ class StudentService:
                 "student_name": student_name,
                 "number_of_subjects": len(subjects),
                 "auth_user_id": owner_id,
+                "registration_number": registration_number.strip(),
             },
             access_token=token,
             conflict="student_id",
         )
         existing_subjects = self._rows(
-            "student_subjects", student_id, token, filters={"active": "eq.true"}
+            "student_subjects", student_id, token
         )
         incoming_subject_ids = {
             subject["subject_id"] for subject in subjects
         }
+        existing_relations = {
+            str(relation["subject_id"]): relation for relation in existing_subjects
+        }
+        existing_deadlines = self._rows(
+            "academic_deadlines", student_id, token, limit=1000
+        )
         saved_subjects: list[dict[str, Any]] = []
         for subject in subjects:
             sid = subject["subject_id"]
             self._ensure_subject_catalog_entry(subject, owner_id, token)
+            previous_relation = existing_relations.get(sid, {})
             relation = {
                 "student_id": student_id,
                 "subject_id": sid,
                 "previous_marks": subject["previous_marks"],
                 "exam_count": subject["exam_count"],
-                "completed_sessions_count": subject["completed_sessions_count"],
-                "missed_sessions_count": subject["missed_sessions_count"],
+                "completed_sessions_count": (
+                    subject["completed_sessions_count"]
+                    if subject["completed_sessions_count"] is not None
+                    else previous_relation.get("completed_sessions_count", 0)
+                ),
+                "missed_sessions_count": (
+                    subject["missed_sessions_count"]
+                    if subject["missed_sessions_count"] is not None
+                    else previous_relation.get("missed_sessions_count", 0)
+                ),
+                "improvement_topics": subject["improvement_topics"],
                 "active": True,
             }
             self.store.upsert(
@@ -203,22 +273,32 @@ class StudentService:
             saved_subjects.append(
                 {key: value for key, value in subject.items() if key != "deadlines"}
             )
-            deadlines = self._validate_deadlines(
-                student_id, sid, subject.get("deadlines")
-            )
-            if "exam_date" in subject and subject["exam_date"]:
-                exam_date, _ = validate_exam_date(subject["exam_date"])
-                deadlines.append(
-                    {
-                        "student_id": student_id,
-                        "subject_id": sid,
-                        "deadline_type": "exam",
-                        "title": "Exam",
-                        "due_date": exam_date,
-                        "notes": None,
-                    }
-                )
+            deadlines = validated_deadlines[sid]
             self._save_deadlines(student_id, deadlines, token)
+            expected_deadline_keys = {
+                (item["deadline_type"], item["title"]) for item in deadlines
+            }
+            for saved_deadline in existing_deadlines:
+                if (
+                    str(saved_deadline.get("subject_id")) == sid
+                    and not (
+                        str(saved_deadline.get("deadline_type", "")).upper() == "EXAM"
+                        and str(saved_deadline.get("due_date", ""))[:10]
+                        < date.today().isoformat()
+                    )
+                    and (
+                        str(saved_deadline.get("deadline_type", "")).upper(),
+                        saved_deadline.get("title"),
+                    ) not in expected_deadline_keys
+                ):
+                    self.store.delete(
+                        "academic_deadlines",
+                        access_token=token,
+                        filters={
+                            "student_id": _eq(student_id),
+                            "deadline_id": _eq(saved_deadline["deadline_id"]),
+                        },
+                    )
         for relation in existing_subjects:
             if str(relation.get("subject_id")) not in incoming_subject_ids:
                 self.store.patch(
@@ -234,6 +314,7 @@ class StudentService:
         return {
             "student_id": student_id,
             "student_name": student_name,
+            "registration_number": registration_number.strip(),
             "number_of_subjects": len(saved_subjects),
             "subjects": saved_subjects,
             "updated": bool(existing_student),
@@ -343,7 +424,7 @@ class StudentService:
                 (
                     row for row in existing
                     if str(row.get("subject_id")) == deadline["subject_id"]
-                    and row.get("deadline_type") == deadline["deadline_type"]
+                    and str(row.get("deadline_type", "")).upper() == deadline["deadline_type"]
                     and row.get("title") == deadline["title"]
                 ),
                 None,
@@ -422,6 +503,7 @@ class StudentService:
         return {
             "student_id": student["student_id"],
             "student_name": student["student_name"],
+            "registration_number": student.get("registration_number"),
             "number_of_subjects": student["number_of_subjects"],
             "subjects": subjects,
             "availability": availability,
@@ -536,6 +618,7 @@ class StudentService:
         profile = self.get_profile(student_id, token)
         if profile is None:
             raise LookupError("Student profile was not found.")
+        self._require_complete_profile(profile)
         sessions = self._rows("study_sessions", student_id, token, limit=2000)
         result = []
         for subject in profile["subjects"]:
@@ -635,24 +718,41 @@ class StudentService:
             raise ValueError("Save availability and session preferences before generating a schedule.")
         priorities = self.predict_priorities(student_id, token)
         existing = self._rows("study_sessions", student_id, token, limit=2000)
+        current = local_wall_datetime(now)
         start_value = payload.get("start_date")
         start = (
             date.fromisoformat(_date(start_value, "start_date"))
             if start_value
-            else (now.date() if now else date.today())
+            else current.date()
         )
         horizon = payload.get("horizon_days", 14)
         if isinstance(horizon, bool) or not isinstance(horizon, int) or not 1 <= horizon <= 60:
             raise ValueError("horizon_days must be a whole number from 1 to 60.")
+        regenerate_future = payload.get("regenerate_future", False)
+        if not isinstance(regenerate_future, bool):
+            raise ValueError("regenerate_future must be a boolean.")
+        replaceable_statuses = {"scheduled", "planned", "pending", "accepted"}
+        replaceable = [
+            row for row in existing
+            if str(row.get("session_date", ""))[:10] >= start.isoformat()
+            and str(row.get("status", "")).lower() in replaceable_statuses
+        ] if regenerate_future else []
+        replaceable_ids = {
+            str(row.get("session_id")) for row in replaceable
+        }
+        preserved_sessions = [
+            row for row in existing
+            if str(row.get("session_id")) not in replaceable_ids
+        ]
         sessions, unscheduled = generate_schedule(
             priorities,
             profile["availability"],
             preferred_session=profile["preferences"]["preferred_session"],
             break_minutes=int(profile["preferences"]["break_minutes"]),
-            existing_sessions=existing,
+            existing_sessions=preserved_sessions,
             start_date=start,
             horizon_days=horizon,
-            now=now,
+            now=current,
         )
         for session in sessions:
             self.store.upsert(
@@ -671,6 +771,31 @@ class StudentService:
                 conflict="student_id,subject_id,session_date,start_time,end_time",
                 ignore_duplicates=True,
             )
+        generated_slots = {
+            (
+                str(session["subject_id"]),
+                str(session["session_date"])[:10],
+                str(session["start_time"])[:5],
+                str(session["end_time"])[:5],
+            )
+            for session in sessions
+        }
+        for old_session in replaceable:
+            old_slot = (
+                str(old_session.get("subject_id")),
+                str(old_session.get("session_date", ""))[:10],
+                str(old_session.get("start_time", ""))[:5],
+                str(old_session.get("end_time", ""))[:5],
+            )
+            if old_slot not in generated_slots:
+                self.store.delete(
+                    "study_sessions",
+                    access_token=token,
+                    filters={
+                        "student_id": _eq(student_id),
+                        "session_id": _eq(old_session["session_id"]),
+                    },
+                )
         all_sessions = self._rows("study_sessions", student_id, token, limit=2000)
         horizon_end = start + timedelta(days=horizon - 1)
         in_window = [
@@ -740,9 +865,7 @@ class StudentService:
             end = datetime.combine(day, datetime.strptime(str(session["end_time"])[:8], "%H:%M:%S").time())
         except (KeyError, TypeError, ValueError) as error:
             raise ValueError("The saved session has an invalid date or end time.") from error
-        current = now or datetime.now()
-        if current.tzinfo is not None:
-            current = current.replace(tzinfo=None)
+        current = local_wall_datetime(now)
         if current <= end:
             raise ValueError("A session can only be marked after its scheduled end time.")
         updated = self.store.patch(
@@ -811,9 +934,7 @@ class StudentService:
             date.fromisoformat(str(session["session_date"])[:10]),
             datetime.strptime(str(session["start_time"])[:8], "%H:%M:%S").time(),
         )
-        current = now or datetime.now()
-        if current.tzinfo is not None:
-            current = current.replace(tzinfo=None)
+        current = local_wall_datetime(now)
         if current >= session_start:
             raise ValueError("A session cannot be skipped after its scheduled start time.")
         updated = self.store.patch(
@@ -882,9 +1003,7 @@ class StudentService:
             other_end = datetime.strptime(str(other["end_time"])[:8], "%H:%M:%S").time()
             if start < other_end and other_start < end:
                 raise ValueError("The edited session would overlap another planned session.")
-        current = now or datetime.now()
-        if current.tzinfo is not None:
-            current = current.replace(tzinfo=None)
+        current = local_wall_datetime(now)
         if datetime.combine(date.fromisoformat(new_date), start) <= current:
             raise ValueError("A session must be moved to a future start time.")
         duration = int(
@@ -978,6 +1097,7 @@ class StudentService:
         profile = self.get_profile(student_id, token)
         if profile is None:
             raise LookupError("Student profile was not found.")
+        self._require_complete_profile(profile)
         subject = next(
             (item for item in profile["subjects"] if str(item["subject_id"]) == str(subject_id)),
             None,
@@ -1017,6 +1137,21 @@ class StudentService:
             )
         response["saved_to_database"] = True
         return response
+
+    @staticmethod
+    def _require_complete_profile(profile: dict[str, Any]) -> None:
+        if not isinstance(profile.get("registration_number"), str) or not profile["registration_number"].strip():
+            raise ValueError("Complete student intake with a registration number before processing.")
+        for subject in profile.get("subjects", []):
+            has_exam = any(
+                str(item.get("deadline_type", "")).upper() == "EXAM"
+                and str(item.get("due_date", ""))[:10] >= date.today().isoformat()
+                for item in subject.get("deadlines", [])
+            )
+            if not has_exam:
+                raise ValueError(
+                    f"Add a current exam date for {subject['subject_name']} before processing."
+                )
 
     def resource_history(
         self,

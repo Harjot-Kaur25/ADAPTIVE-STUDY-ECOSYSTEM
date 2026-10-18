@@ -16,6 +16,23 @@ load_environment_file()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1_000_000
 
+
+@app.after_request
+def add_configured_cors_headers(response):
+    allowed_origins = {
+        origin.strip().rstrip("/")
+        for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
+        if origin.strip()
+    }
+    origin = request.headers.get("Origin", "").rstrip("/")
+    if origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, OPTIONS"
+        response.headers.add("Vary", "Origin")
+    return response
+
+
 model_artifact = load_model()
 try:
     database: SupabaseStore | None = SupabaseStore()
@@ -88,6 +105,7 @@ def health():
                     "configured": False,
                     "connected": False,
                     "schema_ready": False,
+                    "failure": "configuration",
                     "message": database_init_error,
                 },
             }
@@ -101,7 +119,7 @@ def health():
             "training_data_source": model_artifact["training_data_source"],
             "database": db_status,
         }
-    ), (200 if db_status.get("connected") else 503)
+    ), (200 if healthy else 503)
 
 
 @app.route("/api/v1/students", methods=["POST"])
@@ -302,6 +320,7 @@ def compatibility_recommend():
         profile_payload = {
             "student_id": str(student_id),
             "student_name": body.get("student_name"),
+            "registration_number": body.get("registration_number"),
             "subjects": [
                 {
                     **item,

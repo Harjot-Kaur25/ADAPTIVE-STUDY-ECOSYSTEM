@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 import os
 import re
 import urllib.error
@@ -16,12 +17,14 @@ from typing import Any
 
 TABLE_COLUMNS = {
     "students": {
-        "student_id", "student_name", "number_of_subjects", "auth_user_id"
+        "student_id", "student_name", "number_of_subjects", "auth_user_id",
+        "registration_number",
     },
     "subjects": {"subject_id", "subject_name", "created_by"},
     "student_subjects": {
         "student_id", "subject_id", "previous_marks", "exam_count",
-        "completed_sessions_count", "missed_sessions_count", "active"
+        "completed_sessions_count", "missed_sessions_count", "improvement_topics",
+        "active"
     },
     "student_availability": {
         "availability_id", "student_id", "day_of_week", "start_time", "end_time",
@@ -58,13 +61,18 @@ REQUIRED_SCHEMA = {
     table: columns for table, columns in TABLE_COLUMNS.items()
 }
 
+logger = logging.getLogger(__name__)
+
 
 class DatabaseUnavailable(RuntimeError):
     """Supabase is not configured, reachable, authorized, or schema-ready."""
 
-    def __init__(self, message: str, status_code: int = 503) -> None:
+    def __init__(
+        self, message: str, status_code: int = 503, *, kind: str = "database"
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.kind = kind
 
 
 def load_environment_file(path: Path | None = None) -> None:
@@ -151,6 +159,7 @@ class SupabaseStore:
             )
         self.base_url = _project_api_url(raw_url)
         self.api_key = key
+        self.schema_api_key = os.getenv("SUPABASE_SECRET_KEY", "").strip()
         self._schema_cache: dict[str, set[str]] | None = None
 
     @property
@@ -167,6 +176,7 @@ class SupabaseStore:
         payload: dict[str, Any] | list[dict[str, Any]] | None = None,
         prefer: str | None = None,
         allow_empty: bool = False,
+        api_key_override: str | None = None,
     ) -> Any:
         if path not in {"/"}:
             table = path.strip("/")
@@ -178,7 +188,7 @@ class SupabaseStore:
                     "A Supabase user access token is required; use Authorization: Bearer <token>.",
                     401,
                 )
-            bearer = self.api_key
+            bearer = None
         else:
             bearer = access_token
 
@@ -186,10 +196,11 @@ class SupabaseStore:
         if query:
             url += "?" + urllib.parse.urlencode(query, doseq=True)
         headers = {
-            "apikey": self.api_key,
-            "Authorization": f"Bearer {bearer}",
+            "apikey": api_key_override or self.api_key,
             "Accept": "application/json",
         }
+        if bearer is not None:
+            headers["Authorization"] = f"Bearer {bearer}"
         body = None
         if payload is not None:
             body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -203,25 +214,94 @@ class SupabaseStore:
                 raw = response.read()
         except urllib.error.HTTPError as error:
             status = error.code
-            if status in {401, 403}:
-                message = (
-                    "Supabase denied this request. Check the signed-in user's "
-                    "access token and Row Level Security policies."
-                )
+            try:
+                error_payload = json.loads(error.read().decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                error_payload = {}
+            if not isinstance(error_payload, dict):
+                error_payload = {}
+            code = error_payload.get("code")
+            detail = str(error_payload.get("message", "")).lower()
+            if status == 401:
+                kind = "authentication"
+                if api_key_override:
+                    message = (
+                        "Supabase rejected the backend schema-check key. Verify "
+                        "SUPABASE_SECRET_KEY is a valid secret API key for this project."
+                    )
+                else:
+                    message = (
+                        "Supabase rejected the request credentials. Verify the signed-in "
+                        "user token and project API key belong to the configured project."
+                    )
+            elif status == 403:
+                if "permission denied for table" in detail or "permission denied for sequence" in detail:
+                    kind = "permission"
+                    message = (
+                        "Supabase authenticated role lacks database privileges for "
+                        "this operation. Apply the authenticated-data privileges migration."
+                    )
+                elif "row-level security" in detail:
+                    kind = "authorization"
+                    message = (
+                        "Supabase Row Level Security denied this operation. Verify the "
+                        "student ownership mapping and owner-scoped policies."
+                    )
+                else:
+                    kind = "authorization"
+                    message = (
+                        "Supabase denied this operation. Verify authenticated-role "
+                        "privileges and the owner-scoped Row Level Security policy."
+                    )
             elif status == 404:
+                kind = "schema"
                 message = (
                     "A required Supabase table, column, or API endpoint was not found. "
                     "Check the backend schema migration."
                 )
+            elif code in {"PGRST204", "PGRST205", "PGRST202", "42703", "42P01"}:
+                kind = "schema"
+                message = (
+                    "A required Supabase table or column is missing. Apply the "
+                    "backend schema migration and reload the PostgREST schema cache."
+                )
+            elif code == "42P10":
+                kind = "schema"
+                message = (
+                    "The Supabase upsert conflict target has no matching unique "
+                    "index. Run the workflow integrity migration after checking "
+                    "for duplicate records."
+                )
             elif status == 409:
+                kind = "conflict"
                 message = "A Supabase uniqueness constraint rejected a duplicate record."
             else:
+                kind = "database"
                 message = f"Supabase request failed with HTTP {status}."
-            raise DatabaseUnavailable(message, 503 if status >= 500 else status) from error
+            logger.warning(
+                "Supabase request failed method=%s resource=%s status=%s code=%s kind=%s",
+                method,
+                path.strip("/") or "openapi",
+                status,
+                code if isinstance(code, str) else "unknown",
+                kind,
+            )
+            raise DatabaseUnavailable(
+                message,
+                503 if status >= 500 or kind == "schema" else status,
+                kind=kind,
+            ) from error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
+            logger.warning(
+                "Supabase request failed method=%s resource=%s kind=connection error=%s",
+                method,
+                path.strip("/") or "openapi",
+                type(error).__name__,
+            )
             raise DatabaseUnavailable(
                 "Supabase could not be reached. Check the project URL and network.",
                 503,
+                kind="connection",
             ) from error
 
         if not raw:
@@ -230,14 +310,24 @@ class SupabaseStore:
             return json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise DatabaseUnavailable(
-                "Supabase returned an invalid JSON response.", 502
+                "Supabase returned an invalid JSON response.", 502, kind="response"
             ) from error
 
     def schema(self, refresh: bool = False) -> dict[str, set[str]]:
         if self._schema_cache is not None and not refresh:
             return self._schema_cache
+        if not self.schema_api_key:
+            raise DatabaseUnavailable(
+                "Set SUPABASE_SECRET_KEY on the backend to check PostgREST "
+                "connectivity and schema readiness. Keep it server-side.",
+                503,
+                kind="configuration",
+            )
         spec = self._request(
-            "GET", "/", allow_empty=True
+            "GET",
+            "/",
+            allow_empty=True,
+            api_key_override=self.schema_api_key,
         )
         schemas = spec.get("definitions", spec.get("components", {}).get("schemas", {}))
         available: dict[str, set[str]] = {}
@@ -257,6 +347,7 @@ class SupabaseStore:
                 "connected": False,
                 "schema_ready": False,
                 "message": str(error),
+                "failure": error.kind,
             }
         missing = {
             table: sorted(columns - schema.get(table, set()))
@@ -269,6 +360,7 @@ class SupabaseStore:
             "schema_ready": not missing,
             "tables_visible": sorted(schema),
             "missing_schema": missing,
+            "failure": "schema" if missing else None,
         }
 
     def rows(

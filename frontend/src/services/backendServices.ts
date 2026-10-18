@@ -8,7 +8,10 @@ import type {
   ProgressSummary,
   StudentProfile,
   StudentProfileUpdate,
+  StudentStudyInput,
+  StudyPlanResults,
   StudyPriority,
+  StudyResourceRecommendation,
   StudySession,
 } from './contracts';
 import { supabase } from './supabase';
@@ -24,6 +27,7 @@ type BackendSubject = {
   exam_count: number;
   completed_sessions_count?: number;
   missed_sessions_count?: number;
+  improvement_topics?: string | null;
   deadlines?: BackendDeadline[];
 };
 
@@ -36,6 +40,7 @@ type BackendAvailability = {
 type BackendProfile = {
   student_id: string;
   student_name: string;
+  registration_number?: string | null;
   subjects: BackendSubject[];
   availability?: BackendAvailability[];
   preferences?: { preferred_session?: string; break_minutes?: number } | null;
@@ -50,7 +55,7 @@ type BackendAvailabilityResponse = {
 type BackendDeadline = {
   deadline_id?: number | string;
   subject_id: string;
-  deadline_type: 'exam' | 'assignment';
+  deadline_type: 'EXAM' | 'ASSIGNMENT' | 'exam' | 'assignment';
   title: string;
   due_date: string;
   notes?: string | null;
@@ -75,10 +80,114 @@ type BackendPriority = {
   reason?: string;
   recommendations?: string[];
   previous_marks?: number;
+  class_scores?: Record<string, number>;
 };
+
+type BackendPriorityResponse = {
+  predictions: BackendPriority[];
+  score_note?: string;
+};
+
+type BackendResourceResponse = {
+  subject_id: string;
+  subject_name: string;
+  topic: string | null;
+  scope: 'subject' | 'topic';
+  resources: Array<{
+    provider: string;
+    resource_type: string;
+    search_query: string;
+  }>;
+};
+
+type BackendUnscheduledWork = {
+  subject_name: string;
+  remaining_minutes: number;
+  reason: string;
+};
+
+class BackendRequestError extends Error {
+  constructor(message: string, readonly statusCode: number) {
+    super(message);
+  }
+}
 
 function configurationError(message: string): Error {
   return new Error(message);
+}
+
+function mapPriority(item: BackendPriority, index: number): StudyPriority {
+  return {
+    id: item.subject_id,
+    title: item.subject_name,
+    subject: item.subject_name,
+    rank: index + 1,
+    reason: item.reason ?? item.recommendations?.[0],
+    previousMarks: typeof item.previous_marks === 'number' ? item.previous_marks : undefined,
+    priority: item.predicted_priority ?? item.priority,
+    classScores: item.class_scores,
+  };
+}
+
+function profileToStudyInput(profile: BackendProfile): StudentStudyInput {
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return {
+    studentName: profile.student_name ?? '',
+    registrationNumber: profile.registration_number ?? '',
+    subjects: profile.subjects.map((subject) => {
+      const deadlines = subject.deadlines ?? [];
+      const exam = deadlines
+        .filter((deadline) => deadline.deadline_type.toUpperCase() === 'EXAM' && deadline.due_date.slice(0, 10) >= today)
+        .sort((left, right) => left.due_date.localeCompare(right.due_date))[0];
+      return {
+        subjectId: subject.subject_id,
+        subjectName: subject.subject_name,
+        previousMarks: String(subject.previous_marks ?? ''),
+        examDate: exam?.due_date?.slice(0, 10) ?? '',
+        assignmentDeadlines: deadlines
+          .filter((deadline) => deadline.deadline_type.toUpperCase() === 'ASSIGNMENT')
+          .map((deadline) => ({ title: deadline.title, dueDate: deadline.due_date.slice(0, 10) })),
+        improvementTopics: subject.improvement_topics ?? '',
+      };
+    }),
+    availability: (profile.availability ?? []).map((period, index) => ({
+      id: `period-${index}`,
+      dayOfWeek: dayNames[period.day_of_week] ?? '',
+      startTime: period.start_time.slice(0, 5),
+      endTime: period.end_time.slice(0, 5),
+    })),
+    preferredSession: profile.preferences?.preferred_session === '2h' || profile.preferences?.preferred_session === '2-3h'
+      ? profile.preferences.preferred_session
+      : '1h',
+    breakMinutes: String(profile.preferences?.break_minutes ?? 10),
+  };
+}
+
+function toStudyPriorityResult(
+  response: BackendPriorityResponse,
+): StudyPriority[] {
+  return response.predictions.map((item, index) => ({
+    ...mapPriority(item, index),
+    scoreNote: response.score_note,
+  }));
+}
+
+function toResourceRecommendation(
+  response: BackendResourceResponse,
+): StudyResourceRecommendation {
+  return {
+    subjectId: response.subject_id,
+    subjectName: response.subject_name,
+    topic: response.topic,
+    scope: response.scope,
+    resources: response.resources.map((resource) => ({
+      provider: resource.provider,
+      resourceType: resource.resource_type,
+      searchQuery: resource.search_query,
+    })),
+  };
 }
 
 async function accessToken(): Promise<string> {
@@ -127,7 +236,7 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the HTTP status message when an error response is not JSON.
     }
-    throw new Error(message);
+    throw new BackendRequestError(message, response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -177,8 +286,7 @@ function profilePayload(dto: BackendProfile, name: string): Record<string, unkno
       subject_name: subject.subject_name,
       previous_marks: subject.previous_marks,
       exam_count: subject.exam_count,
-      completed_sessions_count: subject.completed_sessions_count ?? 0,
-      missed_sessions_count: subject.missed_sessions_count ?? 0,
+      improvement_topics: subject.improvement_topics ?? '',
       deadlines: (subject.deadlines ?? []).map((deadline) => ({
         deadline_type: deadline.deadline_type,
         title: deadline.title,
@@ -244,7 +352,7 @@ function mapDeadline(dto: BackendDeadline, subjectNames: Map<string, string>): D
     dueAt,
     status,
     notes: dto.notes ?? '',
-    type: dto.deadline_type,
+    type: dto.deadline_type.toUpperCase() === 'EXAM' ? 'exam' : 'assignment',
   };
 }
 
@@ -301,6 +409,115 @@ export const backendServices: FrontendServices = {
       cachedProfile = profile;
       const session = await auth.getCurrentSession();
       return toProfile(profile, session?.user.email);
+    },
+    async getStudyInput() {
+      const id = await studentId();
+      let profile: BackendProfile;
+      try {
+        profile = await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`);
+      } catch (error) {
+        if (error instanceof BackendRequestError && error.statusCode === 404) return null;
+        throw error;
+      }
+      cachedProfile = profile;
+      return profileToStudyInput(profile);
+    },
+    async submitStudyInput(input: StudentStudyInput, regenerateFuture = true): Promise<StudyPlanResults> {
+      const id = await studentId();
+      const subjects = input.subjects.map((subject) => ({
+        subject_id: subject.subjectId.trim(),
+        subject_name: subject.subjectName.trim(),
+        previous_marks: Number(subject.previousMarks),
+        exam_count: 1,
+        exam_date: subject.examDate,
+        improvement_topics: subject.improvementTopics.trim(),
+        deadlines: subject.assignmentDeadlines.map((deadline) => ({
+          deadline_type: 'assignment',
+          title: deadline.title.trim(),
+          due_date: deadline.dueDate,
+        })),
+      }));
+      const profile = await apiRequest<BackendProfile>('/api/v1/students', {
+        method: 'POST',
+        body: JSON.stringify({
+          student_id: id,
+          student_name: input.studentName.trim(),
+          registration_number: input.registrationNumber.trim(),
+          subjects,
+        }),
+      });
+      cachedProfile = {
+        ...profile,
+        student_id: id,
+        student_name: input.studentName.trim(),
+        registration_number: input.registrationNumber.trim(),
+        subjects: profile.subjects,
+      };
+
+      const dayNumber = new Map(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => [day, index]));
+      const availability = await apiRequest<BackendAvailabilityResponse>(`/api/v1/students/${encodeURIComponent(id)}/availability`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          periods: input.availability.map((period) => ({
+            day_of_week: dayNumber.get(period.dayOfWeek),
+            start_time: period.startTime,
+            end_time: period.endTime,
+          })),
+          preferred_session: input.preferredSession,
+          break_minutes: Number(input.breakMinutes),
+        }),
+      });
+      cachedProfile.availability = availability.periods;
+      cachedProfile.preferences = {
+        preferred_session: availability.preferred_session,
+        break_minutes: availability.break_minutes,
+      };
+
+      const priorityResponse = await apiRequest<BackendPriorityResponse>(
+        `/api/v1/students/${encodeURIComponent(id)}/priorities`,
+        { method: 'POST', body: '{}' },
+      );
+      const priorities = toStudyPriorityResult(priorityResponse);
+      const schedule = await apiRequest<{
+        sessions: BackendSession[];
+        unscheduled_work: BackendUnscheduledWork[];
+      }>(`/api/v1/students/${encodeURIComponent(id)}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({ horizon_days: 14, regenerate_future: regenerateFuture }),
+      });
+      const subjectNames = new Map(cachedProfile.subjects.map((subject) => [subject.subject_id, subject.subject_name]));
+      const sessions = schedule.sessions.map((session) => mapSession(session, subjectNames));
+      const needsSupport = new Set(
+        priorities
+          .filter((priority) => priority.priority === 'HIGH' || priority.priority === 'MEDIUM')
+          .map((priority) => priority.id),
+      );
+      const recommendations = await Promise.all(
+        input.subjects
+          .filter((subject) => needsSupport.has(subject.subjectId))
+          .map(async (subject) => {
+            const result = await apiRequest<BackendResourceResponse>(
+              `/api/v1/students/${encodeURIComponent(id)}/subjects/${encodeURIComponent(subject.subjectId)}/resources`,
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  ...(subject.improvementTopics.trim() ? { topic: subject.improvementTopics.trim() } : {}),
+                }),
+              },
+            );
+            return toResourceRecommendation(result);
+          }),
+      );
+      return {
+        priorities,
+        sessions,
+        unscheduledWork: schedule.unscheduled_work.map((item) => ({
+          subjectName: item.subject_name,
+          remainingMinutes: item.remaining_minutes,
+          reason: item.reason,
+        })),
+        recommendations,
+      };
     },
     async updateProfile(update: StudentProfileUpdate) {
       const id = await studentId();
@@ -456,16 +673,47 @@ export const backendServices: FrontendServices = {
   priorities: {
     async listPriorities() {
       const id = await studentId();
-      const result = await apiRequest<{ predictions: BackendPriority[] }>(`/api/v1/students/${encodeURIComponent(id)}/priorities`, { method: 'POST', body: '{}' });
-      return result.predictions.map((item, index): StudyPriority => ({
-        id: item.subject_id,
-        title: item.subject_name,
-        subject: item.subject_name,
-        rank: index + 1,
-        reason: item.reason ?? item.recommendations?.[0],
-        previousMarks: typeof item.previous_marks === 'number' ? item.previous_marks : undefined,
-        priority: item.predicted_priority ?? item.priority,
-      }));
+      const result = await apiRequest<BackendPriorityResponse>(`/api/v1/students/${encodeURIComponent(id)}/priorities`, { method: 'POST', body: '{}' });
+      return toStudyPriorityResult(result);
+    },
+  },
+  resources: {
+    async listRecommendations() {
+      const id = await studentId();
+      const profile = cachedProfile ?? await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`);
+      cachedProfile = profile;
+      const histories = await Promise.all(profile.subjects.map((subject) =>
+        apiRequest<{
+          subject_id: string;
+          subject_name: string;
+          recommendations: Array<{
+            topic: string | null;
+            provider: string;
+            resource_type: string;
+            search_query: string;
+          }>;
+        }>(`/api/v1/students/${encodeURIComponent(id)}/subjects/${encodeURIComponent(subject.subject_id)}/resources`),
+      ));
+      return histories.flatMap((history) => {
+        const grouped = new Map<string, StudyResourceRecommendation>();
+        for (const item of history.recommendations) {
+          const key = item.topic ?? '';
+          const current = grouped.get(key) ?? {
+            subjectId: history.subject_id,
+            subjectName: history.subject_name,
+            topic: item.topic,
+            scope: item.topic ? 'topic' as const : 'subject' as const,
+            resources: [],
+          };
+          current.resources.push({
+            provider: item.provider,
+            resourceType: item.resource_type,
+            searchQuery: item.search_query,
+          });
+          grouped.set(key, current);
+        }
+        return [...grouped.values()];
+      });
     },
   },
   burnout: {

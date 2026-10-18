@@ -121,6 +121,12 @@ export const mockServices: FrontendServices = {
       return clone(profile);
     },
     async saveAvailability() {},
+    async getStudyInput() {
+      return null;
+    },
+    async submitStudyInput() {
+      throw new Error('Configure the Flask backend and Supabase Auth before submitting student information.');
+    },
   },
   planner: {
     async listSchedule(day) {
@@ -167,6 +173,11 @@ export const mockServices: FrontendServices = {
   priorities: {
     async listPriorities() {
       return priorityCollection.list();
+    },
+  },
+  resources: {
+    async listRecommendations() {
+      return [];
     },
   },
   burnout: burnoutService,

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Brand from '../components/Brand';
-import { isAuthEnabled, services } from '../services';
+import { hasApiBaseUrl, isAuthEnabled, services } from '../services';
 
 export default function AuthPage() {
   const { pathname } = useLocation();
@@ -41,6 +41,12 @@ export default function AuthPage() {
     setActionError(false);
     if (Object.keys(nextErrors).length > 0) {
       setActionMessage('Please review the highlighted fields.');
+      setActionError(true);
+      return;
+    }
+
+    if (hasApiBaseUrl && !isAuthEnabled) {
+      setActionMessage('Configure Supabase Auth before using the connected student backend.');
       setActionError(true);
       return;
     }
@@ -109,7 +115,7 @@ export default function AuthPage() {
         </section>
         <section className="signin-form-side">
           <div className="signin-form-wrap">
-            <div className="signin-form-heading"><span className="signin-form-kicker">{isSignup ? 'MAKE ROOM FOR YOUR NEXT SESSION' : 'YOUR STUDY SPACE IS READY'}</span><h2>{isSignup ? 'Create your space' : 'Sign in'}</h2><p>{isAuthEnabled ? 'Use your account to continue to your adaptive plan.' : isSignup ? 'Set up a local demo profile to explore your adaptive plan.' : 'Enter your details to continue to your adaptive plan.'}</p></div>
+            <div className="signin-form-heading"><span className="signin-form-kicker">{isSignup ? 'MAKE ROOM FOR YOUR NEXT SESSION' : 'YOUR STUDY SPACE IS READY'}</span><h2>{isSignup ? 'Create your space' : 'Sign in'}</h2><p>{hasApiBaseUrl && !isAuthEnabled ? 'Supabase Auth must be configured to access the connected study backend.' : isAuthEnabled ? 'Use your account to continue to your adaptive plan.' : isSignup ? 'Set up a local demo profile to explore your adaptive plan.' : 'Enter your details to continue to your adaptive plan.'}</p></div>
             <form className="signin-form" onSubmit={handleSubmit} noValidate>
               {isSignup && <label className="signin-field">YOUR NAME<div className="signin-input"><UserRound size={15} /><input name="name" type="text" placeholder="Your name" autoComplete="name" required aria-invalid={Boolean(fieldErrors.name)} aria-describedby={fieldErrors.name ? errorId('name') : undefined} onChange={() => handleFieldChange('name')} /></div>{fieldErrors.name && <p className="signin-recovery-message" id={errorId('name')} role="alert">{fieldErrors.name}</p>}</label>}
               <label className="signin-field">EMAIL ADDRESS<div className="signin-input"><Mail size={15} /><input name="email" type="email" placeholder="you@somewhere.com" autoComplete="email" required aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? errorId('email') : undefined} onChange={() => handleFieldChange('email')} /></div>{fieldErrors.email && <p className="signin-recovery-message" id={errorId('email')} role="alert">{fieldErrors.email}</p>}</label>

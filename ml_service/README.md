@@ -2,16 +2,18 @@
 
 Adaptive Study Ecosystem is an AI-powered study management system that personalizes learning through ML-based subject priority prediction, availability-aware study scheduling, deadline tracking, session progress monitoring, and educational resource recommendations. It uses Flask for backend services, Supabase for authentication and data storage, and a trained scikit-learn model to support smarter, more organized study planning.
 
-## Current Supabase schema and migration
+## Supabase schema contract and migration
 
-I queried the configured project’s live PostgREST/OpenAPI schema. The existing
-resources are:
+The backend requires the following tables and columns. This is the contract
+declared by the current migrations; live schema readiness was not verified
+during this run because the backend has no configured secret API key for the
+PostgREST schema probe.
 
-| Table | Confirmed existing columns |
+| Table | Required columns |
 |---|---|
-| `students` | `student_id`, `student_name`, `number_of_subjects`, `created_at`, `auth_user_id` |
+| `students` | `student_id`, `student_name`, `number_of_subjects`, `created_at`, `auth_user_id`; `registration_number` after migration 04 |
 | `subjects` | `subject_id`, `subject_name`, `created_by` after migration 03 |
-| `student_subjects` | `student_id`, `subject_id`, `previous_marks`, `exam_count`, session counts, `active` |
+| `student_subjects` | `student_id`, `subject_id`, `previous_marks`, `exam_count`, session counts, `active`; `improvement_topics` after migration 04 |
 | `student_availability` | `availability_id`, `student_id`, `day_of_week`, `start_time`, `end_time` |
 | `academic_deadlines` | `deadline_id`, `student_id`, `subject_id`, `deadline_type`, `title`, `due_date`, `notes`, `created_at` |
 | `subject_priorities` | `prediction_id`, `student_id`, `subject_id`, `predicted_priority`, `previous_marks`, `missed_sessions_count`, `reason`, `predicted_at` |
@@ -19,23 +21,15 @@ resources are:
 | `study_goals` | `goal_id`, `student_id`, `goal_description`, `target_date`, `status` |
 | `notifications` | `notification_id`, `student_id`, `message`, `alert_at`, `status`, `created_at` |
 
-The connected database returned HTTP 200 for schema discovery and safe
-zero-row reads. The live health endpoint reports `status: ok`,
-`schema_ready: true`, and no missing schema. Two independent Supabase Auth
-test users were used to exercise profile ownership through the API.
+An unauthenticated probe of the configured PostgREST OpenAPI endpoint returned
+HTTP 401 with “Secret API key required.” Configure `SUPABASE_SECRET_KEY` as
+described below before treating `/health` as a live schema check. The frontend
+and backend configuration use the same Supabase project host, and the
+configured `SUPABASE_KEY` is publishable; student data requests continue to
+use the signed-in user's bearer token.
 
-The database metadata confirms the ownership join used below:
-`student_subjects.student_id` is a foreign key to `students.student_id`, and
-`student_subjects.subject_id` is a foreign key to `subjects.subject_id`.
-`students.auth_user_id` is nullable UUID. The authenticated role already has
-SELECT, INSERT, and UPDATE grants on `students`; the corrective migration
-also grants only those operations to `student_subjects` and `subjects`, with
-the row policies below limiting which rows are visible or writable.
-
-The live schema includes the base columns and
-`study_preferences`/`resource_recommendations`. `sql/02_supabase_backend_migration.sql`
-is the base additive migration; do not rerun it blindly. The corrective
-`sql/03_profile_owner_rls.sql` has been applied. It adds `subjects.created_by`
+`sql/02_supabase_backend_migration.sql` is the base additive migration; do not
+rerun it blindly. The `sql/03_profile_owner_rls.sql` migration adds `subjects.created_by`
 so new catalog entries can also be owner-scoped, replaces the known legacy
 named subject policies, and installs owner-bound SELECT/INSERT/UPDATE
 policies plus restrictive ownership fences. Those fences prevent any other
@@ -47,15 +41,31 @@ The project also contains `sql/00_verify_existing_schema.sql` and
 They are Oracle-specific, are **not** used by this Supabase backend, and
 should not be run in Supabase.
 
-`resource_recommendations` is not among the original live Supabase tables;
-the migration adds it. The resource endpoint persists subject/topic search
-queries for named educational providers. It does not claim individual
-URLs/lessons were verified.
+Migration 02 creates `resource_recommendations` when it is absent. The
+resource endpoint persists subject/topic search queries for named educational
+providers. It does not claim individual URLs/lessons were verified.
 
-**SQL execution order:** the existing deployment already has the base schema
-and corrective profile-owner policies. Do not rerun either migration against
-that deployment. For a fresh matching project, review and apply the base
-migration before the profile-owner correction.
+`sql/04_student_intake_fields.sql` safely adds `students.registration_number`
+and `student_subjects.improvement_topics` to an existing deployment. Apply it
+before enabling frontend intake. It preserves existing rows and uses
+`IF NOT EXISTS`.
+
+For existing deployments, inspect which migrations have already been applied;
+do not create duplicate tables or blindly rerun migrations. Apply migration 03
+if the profile-owner policies are not present, migration 04 if the intake
+columns are absent, migration 05 if authenticated table/sequence grants
+are absent, and migration 06 to repair owner-scoped policies on workflow
+tables. Migration 06 is safe to rerun: it enables RLS and replaces only its
+named owner policies/fences; it preserves all rows. For a fresh matching
+project, review and apply the base migration before the profile-owner
+correction and later additive migrations.
+If an upsert reports PostgreSQL `42P10`, run
+`sql/07_workflow_integrity_repair.sql` in the Supabase SQL Editor. It verifies
+the natural-key indexes used by backend upserts, checks for duplicate keys
+before creating any missing index, restores authenticated grants and
+owner-scoped workflow policies, and leaves RLS enabled. Duplicate keys abort
+the transaction with the affected table and columns; review them without
+deleting data before rerunning. This migration is safe to rerun.
 The files `sql/00_verify_existing_schema.sql` and
 `sql/01_create_recommendation_table.sql` are legacy Oracle scripts and are not
 part of this Supabase setup.
@@ -71,16 +81,18 @@ Content-Type: application/json
 
 The frontend teammate should sign the student in using Supabase Auth and send
 the **user access token** with each request. The backend uses `SUPABASE_KEY`
-only as the server-side PostgREST API key; it sends the signed-in user token as
-the Authorization bearer so Supabase verifies it and applies that user's RLS
-policies. The key in `.env` is a server-side secret key: never place it in
-browser code, logs, or commits. The migration links `students.auth_user_id` to
-`auth.uid()` and scopes related records through that owned student row.
+only as the PostgREST `apikey`; it sends the signed-in user token as the
+Authorization bearer so Supabase verifies it and applies that user's RLS
+policies. `SUPABASE_KEY` may be the project's publishable key. Set
+`SUPABASE_SECRET_KEY` to a Supabase secret API key on the backend only: the
+unauthenticated `/health` schema probe requires it. That secret is used only
+for the PostgREST OpenAPI/schema check, never for student data requests. Do not
+place it in browser code, logs, or commits. The migration links
+`students.auth_user_id` to `auth.uid()` and scopes related records through
+that owned student row.
 
-The server key and integration test login are configured locally and are not
-shown in this document. Do not work around RLS failures by putting the server
-key in `Authorization` or disabling RLS. If checking current policies before
-the corrective migration, use this read-only query:
+Do not work around RLS failures by putting a secret key in `Authorization` or
+disabling RLS. If checking current policies, use this read-only query:
 
 ```sql
 SELECT policyname, permissive, roles, cmd, qual, with_check
@@ -111,13 +123,23 @@ The API listens at `http://127.0.0.1:5000`. `ml_service/.env` must contain:
 
 ```dotenv
 SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_KEY=your_server_side_key
+SUPABASE_KEY=your_publishable_key
+SUPABASE_SECRET_KEY=your_secret_api_key
 ```
 
 `db.py` also recognizes the Supabase dashboard project URL currently in the
 local `.env` and resolves its project reference to the API hostname. The
 preferred configuration is the project API URL. `.env` is ignored by
 `.gitignore`; `.env.example` contains placeholders only.
+
+For an existing deployment, apply `sql/05_authenticated_data_privileges.sql`
+after migrations 02 and 03. It grants the `authenticated` role the SQL table
+and identity-sequence privileges needed by the existing owner-scoped policies;
+RLS remains enabled. Apply `sql/04_student_intake_fields.sql` as well if it has
+not already been applied. If availability upsert returns PostgreSQL `42P10`,
+run `sql/07_workflow_integrity_repair.sql` in the Supabase SQL Editor. It
+restores missing upsert indexes, grants, and owner-scoped RLS policies, and
+stops without changing data if duplicate natural keys exist.
 
 ## ML method and limitations
 
@@ -165,6 +187,7 @@ updates the matching profile (`200`). Both accept:
 {
   "student_id": "student-123",
   "student_name": "Example Student",
+  "registration_number": "REG-1042",
   "subjects": [
     {
       "subject_id": "math-1",
@@ -173,10 +196,11 @@ updates the matching profile (`200`). Both accept:
       "exam_count": 2,
       "completed_sessions_count": 0,
       "missed_sessions_count": 0,
+      "improvement_topics": "linear equations",
       "exam_date": "2026-11-15",
       "deadlines": [
         {
-          "deadline_type": "assignment",
+          "deadline_type": "ASSIGNMENT",
           "title": "Algebra practice",
           "due_date": "2026-11-10",
           "notes": "Chapter 4"
@@ -187,11 +211,12 @@ updates the matching profile (`200`). Both accept:
 }
 ```
 
-Baseline session counts are optional historical aggregates; ordinary initial
-profile creation can leave them at zero. New individual sessions are counted
-from saved session history. Updating a profile upserts supplied subjects and
-marks omitted existing subject relations inactive; it does not delete
-database records.
+Registration number is stored separately from the authenticated `student_id`.
+The frontend requires marks on a 0–100 scale, an exam date, and valid weekly
+availability before submitting. Historical session-count fields are optional;
+omitting them preserves saved aggregates. Updating a profile upserts supplied
+subjects, synchronizes their deadlines, and marks omitted subject relations
+inactive; it does not delete student/session history.
 
 `GET /api/v1/students/{student_id}` returns the owned profile, active subjects,
 availability, preferences, and deadlines. RLS hides other students' data.
@@ -218,7 +243,11 @@ rejected with 400.
 
 - `GET /api/v1/students/{student_id}/deadlines`
 - `POST /api/v1/students/{student_id}/deadlines` with
-  `{"subject_id":"math-1","deadline_type":"assignment","title":"Essay","due_date":"2026-11-10","notes":""}`
+  `{"subject_id":"math-1","deadline_type":"ASSIGNMENT","title":"Essay","due_date":"2026-11-10","notes":""}`
+
+The backend accepts `exam`/`EXAM` and `assignment`/`ASSIGNMENT` inputs
+case-insensitively, then stores only `EXAM` or `ASSIGNMENT` to match the
+database constraint. Any other deadline type is rejected before persistence.
 - `POST /api/v1/students/{student_id}/priorities`
 
 Priority response includes predictions, model scores, factors, and study
@@ -229,10 +258,12 @@ and does not alter the model score.
 ### Schedule and session tracking
 
 - `POST /api/v1/students/{student_id}/schedule` with optional
-  `{"start_date":"2026-10-19","horizon_days":14}`. The server dynamically
+  `{"start_date":"2026-10-19","horizon_days":14,"regenerate_future":true}`. The server dynamically
   combines active availability, preferences, priorities, workload estimates,
   deadlines, and existing sessions. Response includes `sessions`,
-  `new_sessions`, and `unscheduled_work`.
+  `new_sessions`, and `unscheduled_work`. With `regenerate_future: true`,
+  future non-completed sessions are replaced while completed/history rows are
+  retained. Omitted or false values keep existing sessions.
 - `GET /api/v1/students/{student_id}/schedule` returns upcoming and past
   sessions separately.
 - `POST /api/v1/sessions/{session_id}/accept` accepts a pending session.
@@ -254,6 +285,10 @@ recorded deadline; if it will not fit, the remaining work is reported as
 unscheduled rather than placed after that date. The current workload estimate
 is subject-level, not assignment/topic-level, so separate workloads for
 multiple deadlines on the same subject cannot be inferred.
+Availability and saved session date/time fields do not carry timezone data.
+The backend consistently treats them as wall time in the backend host's local
+timezone; aware clock inputs are converted to that timezone before scheduling,
+while naive inputs are interpreted as already-local wall time.
 
 ### Progress and learning resources
 
@@ -307,18 +342,15 @@ The current unit suite uses a stateful mock store and covers profile
 upserts/validation, ML API inference, availability, multi-subject priority
 allocation, deadline cutoffs, insufficient time, schedule idempotency,
 completed/missed/accepted/edited/skipped session states, progress, resource
-write/read, and errors (19 tests passed on 2026-10-16). Live authenticated
-checks after the RLS correction passed: both test users signed in with
-distinct identities; user B created, read, and updated a profile; invalid
-profile data returned 400; user A received 404 reading user B's profile and
-403 attempting to update it; user B's values remained unchanged. The unique
-test profile and its subject catalog row were then removed and verified
-absent. Live `/health` returned 200 with `status: ok`, `schema_ready: true`,
-and the model loaded. Credentials and access tokens were not printed.
+write/read, regeneration preserving completed sessions, allowlisted CORS, and
+errors (36 local tests passed in this workspace). No live authenticated
+Supabase persistence tests were run. The authenticated Supabase persistence
+path, database migrations, and browser-to-Flask flow still require verification
+in a configured deployment with safe test records.
 
-## Frontend handoff
+## Frontend integration
 
-The frontend should:
+The connected React dashboard now:
 
 1. Authenticate the student with Supabase Auth and keep the returned user
    session securely.
@@ -330,5 +362,7 @@ The frontend should:
    `unscheduled_work`, and allow sessions to be accepted/edited/skipped or
    marked completed/missed after they end.
 
-The backend owns data validation and persistence. No UI was created or changed
-as part of this backend-only handoff.
+The backend owns data validation and persistence. Set `FRONTEND_ORIGINS` to an
+exact comma-separated allowlist of production frontend origins. Vite's
+development proxy handles local requests; the Flask CORS policy does not allow
+wildcard origins.

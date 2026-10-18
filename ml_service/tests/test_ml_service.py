@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import base64
 import csv
+import io
 import json
 import tempfile
 import unittest
+import urllib.error
 import urllib.parse
 from collections import Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -17,6 +19,7 @@ from uuid import uuid4
 import app as app_module
 from db import (
     DatabaseUnavailable,
+    REQUIRED_SCHEMA,
     SupabaseStore,
     _project_api_url,
     access_token_subject,
@@ -38,7 +41,7 @@ SAMPLE_SUBJECT = {
         {
             "deadline_type": "exam",
             "title": "Midterm",
-            "due_date": (date.today() + timedelta(days=5)).isoformat(),
+            "due_date": (date.today() + timedelta(days=14)).isoformat(),
         }
     ],
 }
@@ -176,6 +179,7 @@ class BackendTests(unittest.TestCase):
             {
                 "student_id": "student-1",
                 "student_name": "Example Student",
+                "registration_number": "REG-1042",
                 "subjects": [subject or SAMPLE_SUBJECT],
             },
             self.token,
@@ -278,6 +282,43 @@ class BackendTests(unittest.TestCase):
             now=now,
         )
         self.assertEqual(again, [])
+
+    def test_scheduler_normalizes_aware_now_to_local_wall_time(self):
+        today = date.today()
+        local_timezone = datetime.now().astimezone().tzinfo
+        naive_now = datetime.combine(today, time(9, 30))
+        aware_now = naive_now.replace(tzinfo=local_timezone).astimezone(timezone.utc)
+        subjects = [
+            {
+                "subject_id": "math-1",
+                "subject_name": "Mathematics",
+                "priority": "HIGH",
+                "workload_minutes": 60,
+            }
+        ]
+        availability = [
+            {
+                "day_of_week": today.weekday(),
+                "start_time": "08:00",
+                "end_time": "12:00",
+            }
+        ]
+        kwargs = {
+            "preferred_session": "1h",
+            "break_minutes": 0,
+            "start_date": today,
+            "horizon_days": 1,
+        }
+
+        aware_sessions, _ = generate_schedule(
+            subjects, availability, now=aware_now, **kwargs
+        )
+        naive_sessions, _ = generate_schedule(
+            subjects, availability, now=naive_now, **kwargs
+        )
+
+        self.assertEqual(aware_sessions, naive_sessions)
+        self.assertEqual(aware_sessions[0]["start_time"], "09:30:00")
 
     def test_schedule_distributes_by_priority_and_respects_multiple_windows(self):
         start = date.today() + timedelta(days=1)
@@ -460,6 +501,281 @@ class BackendTests(unittest.TestCase):
             access_token_subject(self.token),
         )
 
+    def test_student_registration_topics_deadlines_and_history_are_synchronized(self):
+        subject = {
+            **SAMPLE_SUBJECT,
+            "exam_date": (date.today() + timedelta(days=12)).isoformat(),
+            "improvement_topics": "linear equations",
+            "deadlines": [
+                {
+                    "deadline_type": "assignment",
+                    "title": "Problem set",
+                    "due_date": (date.today() + timedelta(days=8)).isoformat(),
+                }
+            ],
+        }
+        self.service.save_profile(
+            {
+                "student_id": "student-1",
+                "student_name": "Example Student",
+                "registration_number": "REG-1042",
+                "subjects": [subject],
+            },
+            self.token,
+        )
+        self.assertEqual(
+            {
+                row["deadline_type"]
+                for row in self.store.tables["academic_deadlines"]
+            },
+            {"EXAM", "ASSIGNMENT"},
+        )
+        relation = self.store.tables["student_subjects"][0]
+        relation["completed_sessions_count"] = 6
+        relation["missed_sessions_count"] = 2
+
+        updated_subject = {
+            **{
+                key: value for key, value in subject.items()
+                if key not in {"completed_sessions_count", "missed_sessions_count"}
+            },
+            "previous_marks": 61,
+            "deadlines": [],
+            "exam_date": (date.today() + timedelta(days=15)).isoformat(),
+        }
+        self.service.save_profile(
+            {
+                "student_id": "student-1",
+                "student_name": "Example Student",
+                "registration_number": "REG-1042",
+                "subjects": [updated_subject],
+            },
+            self.token,
+        )
+
+        profile = self.service.get_profile("student-1", self.token)
+        self.assertEqual(profile["registration_number"], "REG-1042")
+        self.assertEqual(profile["subjects"][0]["improvement_topics"], "linear equations")
+        self.assertEqual(profile["subjects"][0]["completed_sessions_count"], 6)
+        self.assertEqual(profile["subjects"][0]["missed_sessions_count"], 2)
+        deadlines = profile["subjects"][0]["deadlines"]
+        self.assertEqual(len(deadlines), 1)
+        self.assertEqual(deadlines[0]["deadline_type"], "EXAM")
+        self.assertEqual(deadlines[0]["due_date"], updated_subject["exam_date"])
+
+    def test_deadline_types_are_normalized_and_unknown_values_rejected_before_writes(self):
+        subject = {
+            **SAMPLE_SUBJECT,
+            "exam_date": (date.today() + timedelta(days=12)).isoformat(),
+            "deadlines": [
+                {
+                    "deadline_type": " assignment ",
+                    "title": "Problem set",
+                    "due_date": (date.today() + timedelta(days=8)).isoformat(),
+                }
+            ],
+        }
+        self.service.save_profile(
+            {
+                "student_id": "student-1",
+                "student_name": "Example Student",
+                "registration_number": "REG-1042",
+                "subjects": [subject],
+            },
+            self.token,
+        )
+        saved_types = {
+            row["deadline_type"] for row in self.store.tables["academic_deadlines"]
+        }
+        self.assertEqual(saved_types, {"EXAM", "ASSIGNMENT"})
+
+        invalid = {
+            **subject,
+            "deadlines": [
+                {
+                    "deadline_type": "project",
+                    "title": "Project",
+                    "due_date": (date.today() + timedelta(days=9)).isoformat(),
+                }
+            ],
+        }
+        with self.assertRaisesRegex(
+            ValueError, "deadline_type must be EXAM or ASSIGNMENT"
+        ):
+            self.service.save_profile(
+                {
+                    "student_id": "student-2",
+                    "student_name": "Another Student",
+                    "registration_number": "REG-2048",
+                    "subjects": [invalid],
+                },
+                user_token(),
+            )
+        self.assertEqual(len(self.store.tables["students"]), 1)
+        self.assertEqual(len(self.store.tables["academic_deadlines"]), 2)
+
+    def test_profile_update_accepts_and_preserves_past_assignment_deadlines(self):
+        subject = {
+            **SAMPLE_SUBJECT,
+            "exam_date": (date.today() + timedelta(days=12)).isoformat(),
+            "deadlines": [
+                {
+                    "deadline_type": "assignment",
+                    "title": "Past problem set",
+                    "due_date": (date.today() - timedelta(days=2)).isoformat(),
+                }
+            ],
+        }
+        self.service.save_profile(
+            {
+                "student_id": "student-1",
+                "student_name": "Example Student",
+                "registration_number": "REG-1042",
+                "subjects": [subject],
+            },
+            self.token,
+        )
+
+        profile = self.service.get_profile("student-1", self.token)
+        assignment = next(
+            item
+            for item in profile["subjects"][0]["deadlines"]
+            if item["deadline_type"] == "ASSIGNMENT"
+        )
+        self.assertEqual(assignment["title"], "Past problem set")
+        self.assertEqual(
+            assignment["due_date"],
+            (date.today() - timedelta(days=2)).isoformat(),
+        )
+
+    def test_profile_validates_all_deadlines_before_writing(self):
+        with self.assertRaisesRegex(ValueError, "valid YYYY-MM-DD"):
+            self.service.save_profile(
+                {
+                    "student_id": "student-1",
+                    "student_name": "Example Student",
+                    "registration_number": "REG-1042",
+                    "subjects": [
+                        {
+                            **SAMPLE_SUBJECT,
+                            "deadlines": [
+                                {
+                                    "deadline_type": "assignment",
+                                    "title": "Invalid date",
+                                    "due_date": "not-a-date",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                self.token,
+            )
+        self.assertEqual(self.store.tables.get("students", []), [])
+        self.assertEqual(self.store.tables.get("subjects", []), [])
+
+    def test_prediction_rejects_legacy_profile_missing_required_intake(self):
+        self.store.upsert(
+            "students",
+            {
+                "student_id": "student-1",
+                "student_name": "Example Student",
+                "number_of_subjects": 1,
+                "auth_user_id": access_token_subject(self.token),
+                "registration_number": None,
+            },
+            access_token=self.token,
+            conflict="student_id",
+        )
+        self.store.insert(
+            "subjects",
+            {
+                "subject_id": "math-1",
+                "subject_name": "Mathematics",
+                "created_by": access_token_subject(self.token),
+            },
+            access_token=self.token,
+        )
+        self.store.upsert(
+            "student_subjects",
+            {
+                "student_id": "student-1",
+                "subject_id": "math-1",
+                "previous_marks": 55,
+                "exam_count": 1,
+                "active": True,
+            },
+            access_token=self.token,
+            conflict="student_id,subject_id",
+        )
+        with self.assertRaisesRegex(ValueError, "registration number"):
+            self.service.predict_priorities("student-1", self.token)
+        self.assertEqual(self.store.tables.get("subject_priorities", []), [])
+
+    def test_new_profile_requires_registration_number_and_exam_date(self):
+        payload = {
+            "student_id": "student-1",
+            "student_name": "Example Student",
+            "subjects": [SAMPLE_SUBJECT],
+        }
+        with self.assertRaisesRegex(ValueError, "registration_number is required"):
+            self.service.save_profile(payload, self.token)
+        payload["registration_number"] = "REG-1042"
+        payload["subjects"] = [{**SAMPLE_SUBJECT, "deadlines": []}]
+        with self.assertRaisesRegex(ValueError, "exam_date is required"):
+            self.service.save_profile(payload, self.token)
+        self.assertEqual(self.store.tables.get("students", []), [])
+
+    def test_schedule_regeneration_replaces_future_plans_and_keeps_completed_history(self):
+        self._save_profile()
+        monday = date.today() + timedelta(days=(7 - date.today().weekday()) % 7)
+        if monday == date.today():
+            monday += timedelta(days=7)
+        self.service.set_availability(
+            "student-1",
+            {
+                "periods": [
+                    {"day_of_week": monday.weekday(), "start_time": "14:00", "end_time": "18:00"}
+                ],
+                "preferred_session": "1h",
+                "break_minutes": 0,
+            },
+            self.token,
+        )
+        plan = self.service.generate_timetable(
+            "student-1",
+            {"start_date": monday.isoformat(), "horizon_days": 1, "regenerate_future": True},
+            self.token,
+            now=datetime.combine(date.today(), time(9)),
+        )
+        self.assertGreaterEqual(len(plan["sessions"]), 2)
+        completed = plan["sessions"][0]
+        self.store.patch(
+            "study_sessions",
+            {"status": "completed"},
+            access_token=self.token,
+            filters={"session_id": f"eq.{completed['session_id']}"},
+        )
+        self.service.set_availability(
+            "student-1",
+            {
+                "periods": [
+                    {"day_of_week": monday.weekday(), "start_time": "14:00", "end_time": "16:00"}
+                ],
+                "preferred_session": "1h",
+                "break_minutes": 0,
+            },
+            self.token,
+        )
+        regenerated = self.service.generate_timetable(
+            "student-1",
+            {"start_date": monday.isoformat(), "horizon_days": 1, "regenerate_future": True},
+            self.token,
+            now=datetime.combine(date.today(), time(9)),
+        )
+        all_sessions = self.store.tables["study_sessions"]
+        self.assertTrue(any(row["session_id"] == completed["session_id"] and row["status"] == "completed" for row in all_sessions))
+        self.assertLessEqual(len(regenerated["sessions"]), 2)
+
     def test_subject_catalog_name_conflict_is_rejected_before_new_student_write(self):
         self._save_profile()
         another_owner = user_token()
@@ -469,6 +785,7 @@ class BackendTests(unittest.TestCase):
                 {
                     "student_id": "student-2",
                     "student_name": "Another Student",
+                    "registration_number": "REG-2048",
                     "subjects": [
                         {
                             **SAMPLE_SUBJECT,
@@ -736,19 +1053,78 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(history["recommendations"]), len(result["resources"]))
         self.assertEqual(history["subject_id"], "math-1")
 
+    def test_cors_headers_are_limited_to_configured_frontend_origins(self):
+        with patch.dict("os.environ", {
+            "FRONTEND_ORIGINS": "https://study.example, https://preview.example"
+        }):
+            allowed = self.client.options(
+                "/api/v1/health",
+                headers={
+                    "Origin": "https://study.example",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "authorization,content-type",
+                },
+            )
+            denied = self.client.get(
+                "/api/v1/students/student-1",
+                headers={"Origin": "https://other.example"},
+            )
+        self.assertEqual(
+            allowed.headers.get("Access-Control-Allow-Origin"),
+            "https://study.example",
+        )
+        self.assertIn(
+            "Authorization",
+            allowed.headers.get("Access-Control-Allow-Headers", ""),
+        )
+        self.assertIsNone(denied.headers.get("Access-Control-Allow-Origin"))
+
     def test_http_endpoints_require_auth_and_validate_json(self):
         response = self.client.get("/api/v1/students/student-1")
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.get_json())
+        malformed_auth = self.client.get(
+            "/api/v1/students/student-1",
+            headers={"Authorization": "Basic invalid"},
+        )
+        self.assertEqual(malformed_auth.status_code, 401)
         response = self.client.post("/api/v1/students", data="{", content_type="application/json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("Malformed JSON", response.get_json()["error"]["message"])
+
+    def test_schedule_endpoint_handles_aware_current_time_with_local_availability(self):
+        self._save_profile()
+        self.service.set_availability(
+            "student-1",
+            {
+                "periods": [
+                    {
+                        "day_of_week": date.today().weekday(),
+                        "start_time": "00:00",
+                        "end_time": "23:59",
+                    }
+                ],
+                "preferred_session": "1h",
+                "break_minutes": 0,
+            },
+            self.token,
+        )
+
+        response = self.client.post(
+            "/api/v1/students/student-1/schedule",
+            json={"start_date": date.today().isoformat(), "horizon_days": 1},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()["start_date"], date.today().isoformat())
 
     def test_http_end_to_end_profile_availability_prediction_schedule_progress_resources(self):
         payload = {
             "student_id": "student-1",
             "student_name": "Example Student",
-            "subjects": [SAMPLE_SUBJECT],
+            "registration_number": "REG-1042",
+            "subjects": [{**SAMPLE_SUBJECT, "improvement_topics": "linear equations"}],
         }
         headers = {**self.headers, "Content-Type": "application/json"}
         created = self.client.post(
@@ -763,7 +1139,9 @@ class BackendTests(unittest.TestCase):
             "/api/v1/students/student-1", headers=self.headers
         )
         self.assertEqual(profile.status_code, 200)
+        self.assertEqual(profile.get_json()["registration_number"], "REG-1042")
         self.assertEqual(profile.get_json()["subjects"][0]["subject_name"], "Mathematics")
+        self.assertEqual(profile.get_json()["subjects"][0]["improvement_topics"], "linear equations")
 
         monday = date.today() + timedelta(days=(7 - date.today().weekday()) % 7)
         if monday == date.today():
@@ -788,11 +1166,12 @@ class BackendTests(unittest.TestCase):
             "/api/v1/students/student-1/priorities", headers=self.headers
         )
         self.assertEqual(priorities.status_code, 200)
+        self.assertIn("score_note", priorities.get_json())
         self.assertEqual(priorities.get_json()["predictions"][0]["priority"], "MEDIUM")
 
         schedule = self.client.post(
             "/api/v1/students/student-1/schedule",
-            json={"start_date": monday.isoformat(), "horizon_days": 1},
+            json={"start_date": monday.isoformat(), "horizon_days": 1, "regenerate_future": True},
             headers=headers,
         )
         self.assertEqual(schedule.status_code, 200)
@@ -836,7 +1215,7 @@ class BackendTests(unittest.TestCase):
     def test_supabase_api_client_uses_user_bearer_not_server_key(self):
         store = SupabaseStore(
             base_url="https://abc12345678901234567.supabase.co",
-            api_key="sb_secret_server_only",
+            api_key="sb_publishable_project_key",
         )
         token = user_token()
         captured = {}
@@ -859,12 +1238,327 @@ class BackendTests(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=fake_open):
             store.rows("students", access_token=token, filters={"student_id": "eq.a"})
         headers = {key.lower(): value for key, value in captured["headers"].items()}
-        self.assertEqual(headers["apikey"], "sb_secret_server_only")
+        self.assertEqual(headers["apikey"], "sb_publishable_project_key")
         self.assertEqual(headers["authorization"], f"Bearer {token}")
-        self.assertNotIn("sb_secret_server_only", headers["authorization"])
+        self.assertNotIn("sb_publishable_project_key", headers["authorization"])
         self.assertEqual(
             urllib.parse.urlparse(captured["url"]).path, "/rest/v1/students"
         )
+
+    def test_schema_probe_requires_backend_secret_key_and_does_not_claim_connection(self):
+        with patch.dict("os.environ", {"SUPABASE_SECRET_KEY": ""}):
+            store = SupabaseStore(
+                base_url="https://abc12345678901234567.supabase.co",
+                api_key="sb_publishable_project_key",
+            )
+        result = store.schema_health()
+        self.assertTrue(result["configured"])
+        self.assertFalse(result["connected"])
+        self.assertFalse(result["schema_ready"])
+        self.assertEqual(result["failure"], "configuration")
+        self.assertIn("SUPABASE_SECRET_KEY", result["message"])
+
+    def test_health_endpoint_returns_unhealthy_status_when_schema_probe_unconfigured(self):
+        with patch.dict("os.environ", {"SUPABASE_SECRET_KEY": ""}):
+            app_module.database = SupabaseStore(
+                base_url="https://abc12345678901234567.supabase.co",
+                api_key="sb_publishable_project_key",
+            )
+        response = self.client.get("/api/v1/health")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["status"], "degraded")
+        self.assertFalse(response.get_json()["database"]["connected"])
+        self.assertEqual(response.get_json()["database"]["failure"], "configuration")
+
+    def test_schema_probe_uses_secret_key_only_as_apikey(self):
+        with patch.dict("os.environ", {"SUPABASE_SECRET_KEY": "sb_secret_health_only"}):
+            store = SupabaseStore(
+                base_url="https://abc12345678901234567.supabase.co",
+                api_key="sb_publishable_project_key",
+            )
+        captured = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"definitions":{}}'
+
+        def fake_open(request, timeout):
+            captured["headers"] = {
+                key.lower(): value for key, value in request.header_items()
+            }
+            return Response()
+
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            result = store.schema_health()
+        self.assertTrue(result["connected"])
+        self.assertFalse(result["schema_ready"])
+        self.assertEqual(result["failure"], "schema")
+        self.assertEqual(captured["headers"]["apikey"], "sb_secret_health_only")
+        self.assertNotIn("authorization", captured["headers"])
+        self.assertEqual(set(REQUIRED_SCHEMA), set(result["missing_schema"]))
+
+    def test_schema_probe_marks_all_required_columns_ready(self):
+        with patch.dict("os.environ", {"SUPABASE_SECRET_KEY": "sb_secret_health_only"}):
+            store = SupabaseStore(
+                base_url="https://abc12345678901234567.supabase.co",
+                api_key="sb_publishable_project_key",
+            )
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                definitions = {
+                    table: {"properties": {column: {} for column in columns}}
+                    for table, columns in REQUIRED_SCHEMA.items()
+                }
+                return json.dumps({"definitions": definitions}).encode("utf-8")
+
+        with patch("urllib.request.urlopen", return_value=Response()):
+            result = store.schema_health()
+        self.assertTrue(result["configured"])
+        self.assertTrue(result["connected"])
+        self.assertTrue(result["schema_ready"])
+        self.assertIsNone(result["failure"])
+        self.assertEqual(result["missing_schema"], {})
+
+    def test_supabase_permission_rls_and_invalid_token_errors_are_distinguished(self):
+        store = SupabaseStore(
+            base_url="https://abc12345678901234567.supabase.co",
+            api_key="sb_publishable_project_key",
+        )
+        cases = (
+            (
+                403,
+                {"code": "42501", "message": "permission denied for table academic_deadlines"},
+                "permission",
+                "authenticated role lacks database privileges",
+            ),
+            (
+                403,
+                {"code": "42501", "message": "new row violates row-level security policy"},
+                "authorization",
+                "Row Level Security denied",
+            ),
+            (
+                401,
+                {"code": "PGRST301", "message": "JWT expired"},
+                "authentication",
+                "rejected the request credentials",
+            ),
+            (
+                400,
+                {
+                    "code": "42P10",
+                    "message": "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+                },
+                "schema",
+                "upsert conflict target has no matching unique index",
+            ),
+        )
+        for status, payload, expected_kind, expected_message in cases:
+            with self.subTest(kind=expected_kind):
+                error = urllib.error.HTTPError(
+                    "https://supabase.invalid/rest/v1/academic_deadlines",
+                    status,
+                    "denied",
+                    {},
+                    io.BytesIO(json.dumps(payload).encode("utf-8")),
+                )
+                with patch("urllib.request.urlopen", side_effect=error):
+                    with self.assertRaises(DatabaseUnavailable) as raised:
+                        store.rows(
+                            "academic_deadlines",
+                            access_token=self.token,
+                            filters={"student_id": "eq.private-student-id"},
+                        )
+                self.assertEqual(raised.exception.kind, expected_kind)
+                self.assertIn(expected_message, str(raised.exception))
+                self.assertNotIn("private-student-id", str(raised.exception))
+                self.assertNotIn("JWT expired", str(raised.exception))
+
+    def test_supabase_connection_failure_is_classified(self):
+        store = SupabaseStore(
+            base_url="https://abc12345678901234567.supabase.co",
+            api_key="sb_publishable_project_key",
+        )
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("temporary network failure"),
+        ):
+            with self.assertRaises(DatabaseUnavailable) as raised:
+                store.rows("students", access_token=self.token)
+        self.assertEqual(raised.exception.kind, "connection")
+        self.assertEqual(raised.exception.status_code, 503)
+
+    def test_missing_postgrest_column_is_a_schema_failure(self):
+        store = SupabaseStore(
+            base_url="https://abc12345678901234567.supabase.co",
+            api_key="sb_publishable_project_key",
+        )
+        error = urllib.error.HTTPError(
+            "https://supabase.invalid/rest/v1/academic_deadlines",
+            400,
+            "schema cache miss",
+            {},
+            io.BytesIO(
+                json.dumps(
+                    {
+                        "code": "PGRST204",
+                        "message": "Column not found in schema cache",
+                    }
+                ).encode("utf-8")
+            ),
+        )
+        with patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(DatabaseUnavailable) as raised:
+                store.rows("academic_deadlines", access_token=self.token)
+        self.assertEqual(raised.exception.kind, "schema")
+        self.assertEqual(raised.exception.status_code, 503)
+
+    def test_http_route_returns_safe_errors_for_invalid_token_and_rls_denial(self):
+        store = SupabaseStore(
+            base_url="https://abc12345678901234567.supabase.co",
+            api_key="sb_publishable_project_key",
+        )
+        app_module.database = store
+        cases = (
+            (
+                401,
+                {"code": "PGRST301", "message": "JWT expired"},
+                "rejected the request credentials",
+            ),
+            (
+                403,
+                {"code": "42501", "message": "new row violates row-level security policy"},
+                "Row Level Security denied",
+            ),
+        )
+        for status, payload, expected_message in cases:
+            with self.subTest(status=status):
+                error = urllib.error.HTTPError(
+                    "https://supabase.invalid/rest/v1/students",
+                    status,
+                    "denied",
+                    {},
+                    io.BytesIO(json.dumps(payload).encode("utf-8")),
+                )
+                with patch("urllib.request.urlopen", side_effect=error):
+                    response = self.client.get(
+                        "/api/v1/students/student-1",
+                        headers=self.headers,
+                    )
+                self.assertEqual(response.status_code, status)
+                self.assertIn(
+                    expected_message,
+                    response.get_json()["error"]["message"],
+                )
+
+    def test_rls_hidden_student_is_returned_as_not_found(self):
+        store = SupabaseStore(
+            base_url="https://abc12345678901234567.supabase.co",
+            api_key="sb_publishable_project_key",
+        )
+        app_module.database = store
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b"[]"
+
+        with patch("urllib.request.urlopen", return_value=Response()) as request:
+            response = self.client.get(
+                "/api/v1/students/another-student",
+                headers=self.headers,
+            )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.get_json()["error"]["message"],
+            "Student profile was not found.",
+        )
+        sent_headers = {
+            key.lower(): value for key, value in request.call_args.args[0].header_items()
+        }
+        self.assertTrue(sent_headers["authorization"].startswith("Bearer "))
+        self.assertEqual(
+            sent_headers["authorization"].partition(" ")[2],
+            self.headers["Authorization"].partition(" ")[2],
+        )
+        self.assertEqual(sent_headers["authorization"], self.headers["Authorization"])
+
+    def test_workflow_rls_migration_fences_each_student_table_to_its_auth_owner(self):
+        migration_path = (
+            Path(__file__).resolve().parents[1]
+            / "sql"
+            / "07_workflow_integrity_repair.sql"
+        )
+        migration = migration_path.read_text(encoding="utf-8")
+        workflow_tables = {
+            "student_subjects",
+            "student_availability",
+            "study_preferences",
+            "resource_recommendations",
+            "academic_deadlines",
+            "subject_priorities",
+            "study_sessions",
+            "study_goals",
+            "notifications",
+        }
+        for table in workflow_tables:
+            with self.subTest(table=table):
+                self.assertIn(f"'{table}'", migration)
+                self.assertIn(f"ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY", migration)
+        self.assertIn("s.auth_user_id = (SELECT auth.uid())", migration)
+        self.assertIn("USING (auth_user_id = (SELECT auth.uid()))", migration)
+        self.assertIn("AS RESTRICTIVE FOR ALL TO authenticated", migration)
+        self.assertIn("WITH CHECK (%s)", migration)
+        self.assertNotIn("DISABLE ROW LEVEL SECURITY", migration)
+        self.assertNotIn("TO anon", migration)
+
+    def test_workflow_integrity_migration_checks_duplicates_and_upsert_keys(self):
+        migration_path = (
+            Path(__file__).resolve().parents[1]
+            / "sql"
+            / "07_workflow_integrity_repair.sql"
+        )
+        migration = migration_path.read_text(encoding="utf-8")
+        targets = (
+            (
+                "student_availability",
+                "student_id', 'day_of_week', 'start_time', 'end_time",
+            ),
+            ("student_subjects", "student_id', 'subject_id"),
+            ("subject_priorities", "student_id', 'subject_id"),
+            (
+                "study_sessions",
+                "student_id', 'subject_id', 'session_date', 'start_time', 'end_time",
+            ),
+        )
+        for table, columns in targets:
+            with self.subTest(table=table):
+                self.assertIn(f"'{table}'", migration)
+                self.assertIn(columns, migration)
+        self.assertIn("HAVING count(*) > 1", migration)
+        self.assertIn("RAISE EXCEPTION", migration)
+        self.assertIn("CREATE UNIQUE INDEX %I", migration)
+        self.assertIn("ON public.%I (%s)", migration)
+        self.assertNotIn("DELETE FROM", migration.upper())
+        self.assertNotIn("DROP TABLE", migration.upper())
 
     def test_dashboard_url_is_normalized_without_exposing_project_reference(self):
         result = _project_api_url(

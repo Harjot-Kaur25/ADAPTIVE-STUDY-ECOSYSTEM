@@ -7,7 +7,8 @@
 -- delete or merge existing records.
 
 ALTER TABLE public.students
-    ADD COLUMN IF NOT EXISTS auth_user_id uuid;
+    ADD COLUMN IF NOT EXISTS auth_user_id uuid,
+    ADD COLUMN IF NOT EXISTS registration_number text;
 
 ALTER TABLE public.subjects
     ADD COLUMN IF NOT EXISTS created_by uuid;
@@ -16,6 +17,7 @@ ALTER TABLE public.student_subjects
     ADD COLUMN IF NOT EXISTS exam_count integer NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS completed_sessions_count integer NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS missed_sessions_count integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS improvement_topics text,
     ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
 
 ALTER TABLE public.student_availability
@@ -78,6 +80,42 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE
     ON TABLE public.students, public.student_subjects, public.subjects
     TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON TABLE public.student_availability, public.study_preferences,
+             public.resource_recommendations, public.academic_deadlines,
+             public.subject_priorities, public.study_sessions,
+             public.study_goals, public.notifications
+    TO authenticated;
+
+DO $sequence_grants$
+DECLARE
+    target record;
+    sequence_name text;
+BEGIN
+    FOR target IN
+        SELECT * FROM (VALUES
+            ('academic_deadlines', 'deadline_id'),
+            ('resource_recommendations', 'recommendation_id'),
+            ('subject_priorities', 'prediction_id'),
+            ('study_sessions', 'session_id'),
+            ('study_goals', 'goal_id'),
+            ('notifications', 'notification_id')
+        ) AS targets(table_name, column_name)
+    LOOP
+        sequence_name := pg_get_serial_sequence(
+            format('public.%I', target.table_name),
+            target.column_name
+        );
+        IF sequence_name IS NOT NULL THEN
+            EXECUTE format(
+                'GRANT USAGE, SELECT ON SEQUENCE %s TO authenticated',
+                sequence_name::regclass
+            );
+        END IF;
+    END LOOP;
+END
+$sequence_grants$;
 
 DO $policies$
 BEGIN

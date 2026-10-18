@@ -10,15 +10,22 @@ export type {
   ProgressRange,
   ProgressService,
   ProgressSummary,
+  ResourceRecommendationService,
   ScheduleService,
   SignInInput,
   SignUpInput,
   StudentProfile,
   StudentProfileService,
   StudentProfileUpdate,
+  StudentAvailabilityInput,
+  StudentStudyInput,
+  StudentStudySubjectInput,
+  StudyPlanResults,
   StudyPriority,
+  StudyResourceRecommendation,
   StudySession,
   StudySessionService,
+  UnscheduledWork,
 } from './contracts';
 import { mockServices } from './mockServices';
 import { backendServices, hasApiBaseUrl } from './backendServices';
