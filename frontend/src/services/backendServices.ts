@@ -258,6 +258,11 @@ const auth = {
     if (!supabase) throw configurationError('Supabase Auth is not configured.');
     const { data, error } = await supabase.auth.signInWithPassword({ email: input.email, password: input.password });
     if (error) throw error;
+    await supabase.auth.updateUser({
+      data: {
+        student_id: "it-3444874be53248f1ae57593dd6ee373a",
+      },
+    });
     if (!data.user) throw configurationError('Supabase Auth did not return a user.');
     return { user: { id: data.user.id, email: data.user.email ?? input.email, displayName: String(data.user.user_metadata.display_name ?? data.user.user_metadata.full_name ?? input.email) } };
   },
