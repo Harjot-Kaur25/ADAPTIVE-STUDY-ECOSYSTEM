@@ -2,31 +2,15 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, Clock3, Flame, MoreHorizontal, Plus, Sparkles, Target } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import WorkspaceShell, { type DashboardSection } from '../components/WorkspaceShell';
-import { initialGoals, initialSubjects, schedules, type CustomSession, type Goal, type StudyTask, type Subject } from '../data/studyDemoData';
-import { hasApiBaseUrl, isBackendEnabled, services } from '../services';
-import type { Deadline, ProgressSummary, StudyPriority } from '../services/contracts';
+import { initialGoals, initialSubjects, schedules, studyPreviewDaily, studyPreviewProgress, type CustomSession, type Goal, type StudyTask, type Subject } from '../data/studyDemoData';
+import { hasApiBaseUrl, isBackendEnabled, isProfileMissingError, services } from '../services';
+import type { Deadline, ProgressSummary, StudentProfile, StudentSubject, StudyPriority } from '../services/contracts';
 import './SubjectPriorityDetails.css';
 
 type Range = 'THIS WEEK' | 'LAST 7 DAYS';
 
 const sectionNames: Record<string, DashboardSection> = { overview: 'Overview', schedule: 'Schedule', subjects: 'Subjects', progress: 'Progress', goals: 'Goals' };
 const week = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-const demoFocusByDay = [
-  { day: 'Monday', shortDay: 'Mon', hours: 2.1 },
-  { day: 'Tuesday', shortDay: 'Tue', hours: 3.3 },
-  { day: 'Wednesday', shortDay: 'Wed', hours: 1.9 },
-  { day: 'Thursday', shortDay: 'Thu', hours: 3.8 },
-  { day: 'Friday', shortDay: 'Fri', hours: 2.8 },
-  { day: 'Saturday', shortDay: 'Sat', hours: 1.0 },
-  { day: 'Sunday', shortDay: 'Sun', hours: 1.6 },
-];
-const demoStudySessions: CustomSession[] = [
-  { id: 'demo-progress-calculus', time: '09:00', title: 'Calculus Practice', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', day: 'MON', custom: true, status: 'pending' },
-  { id: 'demo-progress-routing', time: '10:30', title: 'Routing Protocols', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', day: 'TUE', custom: true, status: 'pending' },
-  { id: 'demo-progress-sql', time: '13:00', title: 'SQL Practice', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', day: 'WED', custom: true, status: 'completed' },
-  { id: 'demo-progress-microcontroller', time: '14:30', title: 'Microcontroller Basics', subject: 'Embedded Systems', kind: 'FOCUS', length: '45 min', day: 'THU', custom: true, status: 'pending' },
-  { id: 'demo-progress-integration', time: '16:00', title: 'Integration Problems', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', day: 'FRI', custom: true, status: 'completed' },
-];
 const calendarDates = (() => {
   const monday = new Date();
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -37,23 +21,27 @@ const calendarDates = (() => {
   });
 })();
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const demoWeeklySchedule: CustomSession[] = [
-  { id: 'demo-schedule-mon-math', day: 'MON', time: '09:00', title: 'Calculus & Integration Practice', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[0]), status: 'completed', priority: 'High' },
-  { id: 'demo-schedule-mon-networks', day: 'MON', time: '14:00', title: 'Routing Protocols', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', scheduledDate: dateKey(calendarDates[0]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-tue-dbms', day: 'TUE', time: '10:00', title: 'SQL Queries & Normalization', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[1]), status: 'planned', priority: 'High' },
-  { id: 'demo-schedule-tue-embedded', day: 'TUE', time: '16:00', title: 'Microcontroller Fundamentals', subject: 'Embedded Systems', kind: 'FOCUS', length: '45 min', scheduledDate: dateKey(calendarDates[1]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-wed-math', day: 'WED', time: '09:00', title: 'Differential Equations Practice', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[2]), status: 'planned', priority: 'High' },
-  { id: 'demo-schedule-wed-networks', day: 'WED', time: '15:00', title: 'Transport Layer & TCP', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', scheduledDate: dateKey(calendarDates[2]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-thu-dbms', day: 'THU', time: '10:00', title: 'Transactions & Indexing', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[3]), status: 'planned', priority: 'High' },
-  { id: 'demo-schedule-thu-embedded', day: 'THU', time: '17:00', title: 'GPIO & Sensor Interfaces', subject: 'Embedded Systems', kind: 'FOCUS', length: '45 min', scheduledDate: dateKey(calendarDates[3]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-fri-math', day: 'FRI', time: '09:00', title: 'Revision & Problem Solving', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[4]), status: 'planned', priority: 'High' },
-  { id: 'demo-schedule-fri-networks', day: 'FRI', time: '14:00', title: 'Network Security Basics', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', scheduledDate: dateKey(calendarDates[4]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-sat-dbms', day: 'SAT', time: '10:00', title: 'Practice Questions', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', scheduledDate: dateKey(calendarDates[5]), status: 'planned', priority: 'Medium' },
-  { id: 'demo-schedule-sun-review', day: 'SUN', time: '11:00', title: 'Review completed study topics', subject: 'Weekly Review', kind: 'REVIEW', length: '45 min', scheduledDate: dateKey(calendarDates[6]), status: 'planned', priority: 'Low' },
-];
+const demoWeeklySchedule: CustomSession[] = week.flatMap((day, index) =>
+  (schedules[day] ?? []).map((task) => ({
+    ...task,
+    day,
+    scheduledDate: dateKey(calendarDates[index]),
+  })),
+);
 const shortDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
 const timeOptions = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
 const durationOptions = ['25', '45', '60', '90'];
+function subjectsFromProfile(subjects: StudentSubject[]): Subject[] {
+  const colors = ['blue', 'ice', 'steel', 'sky'];
+  return subjects.map((subject, index) => ({
+    name: subject.name,
+    code: subject.id,
+    color: colors[index % colors.length],
+    progress: Math.max(0, Math.min(100, Math.round(subject.previousMarks))),
+    metricLabel: 'PREVIOUS MARKS',
+    next: `${subject.examCount} exams recorded`,
+  }));
+}
 let idCounter = 0;
 function makeId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return `${prefix}-${crypto.randomUUID()}`;
@@ -67,13 +55,13 @@ function loadPlanningState(): { sessions: CustomSession[]; completed: Record<str
     return { sessions: Array.isArray(saved.sessions) ? saved.sessions : [], completed: saved.completed && typeof saved.completed === 'object' ? saved.completed : {} };
   } catch { return { sessions: [], completed: {} }; }
 }
-function getTasks(day: string, sessions: CustomSession[], backendSessions: CustomSession[] | null = null) {
+function getTasks(day: string, sessions: CustomSession[], backendSessions: CustomSession[] | null = null, demoSchedulePreview = false) {
   const dayIndex = week.indexOf(day);
   const date = dayIndex >= 0 ? dateKey(calendarDates[dayIndex]) : '';
   const source = hasApiBaseUrl
     ? backendSessions?.length
       ? backendSessions.filter((session) => session.day === day && session.scheduledDate === date)
-      : backendSessions !== null
+      : demoSchedulePreview
         ? demoWeeklySchedule.filter((session) => session.day === day && session.scheduledDate === date)
         : []
     : schedules[day] ?? [];
@@ -118,7 +106,7 @@ function PriorityDetails({ note }: { note: string }) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const { priority, reasons } = parsePriorityNote(note);
-  if (!priority) return <b className="priority-details-unavailable">Priority details unavailable</b>;
+  if (!priority) return <span className="priority-details-unavailable">Priority guidance will appear when available.</span>;
   return <div className="priority-details">
     <button type="button" className="priority-details-toggle" aria-expanded={expanded} aria-controls={panelId} onClick={() => setExpanded((open) => !open)}>
       <span>Priority details</span><ChevronDown size={13} aria-hidden="true" />
@@ -134,21 +122,23 @@ function RangeSelector({ value, onChange, label }: { value: Range; onChange: (ra
 }
 function TaskList({ day, tasks, completed, onToggle, loading, error }: { day: string; tasks: StudyTask[]; completed: Record<string, boolean>; onToggle: (task: StudyTask, day: string) => void; loading: boolean; error: string }) {
   return <div className="study-task-list">{tasks.length === 0 ? <p className="demo-footnote" role={error ? 'alert' : undefined}>{loading ? 'Loading saved study sessions…' : error || 'No study blocks are planned for this day.'}</p> : tasks.map((task) => {
-    const checked = task.status === 'completed' || Boolean(completed[`${day}:${task.id}`]);
     const demoSession = task.id.startsWith('demo-schedule-');
-    const terminal = task.status === 'completed' || task.status === 'missed' || task.status === 'skipped';
-    const state = checked ? 'COMPLETED' : task.status ? task.status.replace('-', ' ').toUpperCase() : task.kind;
+    const completionKey = `${day}:${task.id}`;
+    const checked = demoSession && Object.prototype.hasOwnProperty.call(completed, completionKey)
+      ? Boolean(completed[completionKey])
+      : task.status === 'completed' || Boolean(completed[completionKey]);
+    const terminal = !demoSession && (task.status === 'completed' || task.status === 'missed' || task.status === 'skipped');
+    const state = checked ? 'COMPLETED' : demoSession && task.status === 'completed' ? 'PLANNED' : task.status ? task.status.replace('-', ' ').toUpperCase() : task.kind;
     const canComplete = demoSession || !hasApiBaseUrl || !task.scheduledDate || canMarkSessionComplete(task);
     return <div className={`study-task ${checked ? 'is-done' : ''}`} key={`${day}-${task.id}`}><span className="study-task-time">{formatTime(task.time)}</span><button type="button" className="task-check" disabled={terminal || !canComplete} aria-label={checked ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`} aria-pressed={checked} onClick={() => onToggle(task, day)}>{checked && <Check size={11} />}</button><span className="task-time-line" /><div className="study-task-copy"><b>{task.title}</b><small>{task.subject} <i>·</i> {formatTimeRange(task)} <i>·</i> {task.length}{task.priority && <> <i>·</i> {task.priority} priority</>}</small></div><span className="study-task-kind" style={task.status === 'missed' || task.status === 'skipped' ? { color: '#f2a6a6' } : undefined}>{state}</span></div>;
   })}</div>;
 }
-function WeekCalendar({ selectedDay, onSelect, onOpenSchedule, sessions, backendSessions, loading, error }: { selectedDay: string; onSelect: (day: string) => void; onOpenSchedule: () => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; loading: boolean; error: string }) {
-  const selectedTasks = getTasks(selectedDay, sessions, backendSessions);
+function WeekCalendar({ selectedDay, onSelect, onOpenSchedule, sessions, backendSessions, demoSchedulePreview, demoScheduleMessage, loading, error }: { selectedDay: string; onSelect: (day: string) => void; onOpenSchedule: () => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; demoSchedulePreview: boolean; demoScheduleMessage: string; loading: boolean; error: string }) {
+  const selectedTasks = getTasks(selectedDay, sessions, backendSessions, demoSchedulePreview);
   const nextTask = selectedTasks[0];
   const selectedDate = calendarDates[week.indexOf(selectedDay)];
-  const demoPreview = hasApiBaseUrl && backendSessions !== null && backendSessions.length === 0 && !loading && !error;
   const label = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-  return <section className="workspace-panel overview-calendar" aria-label="Weekly study calendar"><div className="overview-calendar-head"><div><span className="panel-eyebrow"><CalendarDays size={12} /> YOUR WEEK AT A GLANCE</span><h3>{label(calendarDates[0])} <i>—</i> {label(calendarDates[6])}</h3></div><button type="button" className="subtle-button" onClick={onOpenSchedule}>Open schedule <ArrowRight size={13} /></button></div><div className="overview-calendar-days" role="group" aria-label="Choose a day">{week.map((day, index) => <button type="button" key={day} aria-pressed={selectedDay === day} aria-label={`${day}, ${label(calendarDates[index])}`} className={`overview-calendar-day ${selectedDay === day ? 'is-selected' : ''}`} onClick={() => onSelect(day)}><span>{day.slice(0, 1)}<small>{day.slice(1).toLowerCase()}</small></span><b>{calendarDates[index].getDate()}</b><i className={getTasks(day, sessions, backendSessions).length ? 'has-items' : ''} /></button>)}</div>{demoPreview && <p className="demo-footnote">Demo schedule preview · No saved sessions yet</p>}<div className="overview-calendar-next"><span className="calendar-selected-date">{selectedDay} <i>·</i> {label(selectedDate)}</span><span className="calendar-session-count">{loading ? 'Loading sessions…' : error ? 'Schedule unavailable' : `${selectedTasks.length} planned ${selectedTasks.length === 1 ? 'session' : 'sessions'}`}</span><span className="calendar-next-task"><small>UP NEXT</small><b>{loading ? 'Loading saved schedule…' : error ? 'Schedule unavailable' : nextTask ? `${formatTime(nextTask.time)} · ${nextTask.title}` : 'A little open space'}</b></span></div></section>;
+  return <section className="workspace-panel overview-calendar" aria-label="Weekly study calendar"><div className="overview-calendar-head"><div><span className="panel-eyebrow"><CalendarDays size={12} /> YOUR WEEK AT A GLANCE</span><h3>{label(calendarDates[0])} <i>—</i> {label(calendarDates[6])}</h3></div><button type="button" className="subtle-button" onClick={onOpenSchedule}>Open schedule <ArrowRight size={13} /></button></div><div className="overview-calendar-days" role="group" aria-label="Choose a day">{week.map((day, index) => <button type="button" key={day} aria-pressed={selectedDay === day} aria-label={`${day}, ${label(calendarDates[index])}`} className={`overview-calendar-day ${selectedDay === day ? 'is-selected' : ''}`} onClick={() => onSelect(day)}><span>{day.slice(0, 1)}<small>{day.slice(1).toLowerCase()}</small></span><b>{calendarDates[index].getDate()}</b><i className={getTasks(day, sessions, backendSessions, demoSchedulePreview).length ? 'has-items' : ''} /></button>)}</div>{demoSchedulePreview && <p className="demo-footnote">{demoScheduleMessage}</p>}<div className="overview-calendar-next"><span className="calendar-selected-date">{selectedDay} <i>·</i> {label(selectedDate)}</span><span className="calendar-session-count">{loading ? 'Loading sessions…' : error && !demoSchedulePreview ? 'Schedule unavailable' : `${selectedTasks.length} planned ${selectedTasks.length === 1 ? 'session' : 'sessions'}`}</span><span className="calendar-next-task"><small>UP NEXT</small><b>{loading ? 'Loading saved schedule…' : error && !demoSchedulePreview ? 'Schedule unavailable' : nextTask ? `${formatTime(nextTask.time)} · ${nextTask.title}` : 'A little open space'}</b></span></div></section>;
 }
 function TimeBlockWidget({ selectedDay, sessions, onAdd, onEdit, onDelete, onStatus }: { selectedDay: string; sessions: CustomSession[]; onAdd: (session: CustomSession) => void; onEdit: (session: CustomSession) => void; onDelete: (session: CustomSession) => void; onStatus: (message: string) => void }) {
   const [time, setTime] = useState('15:00');
@@ -172,8 +162,8 @@ function TimeBlockWidget({ selectedDay, sessions, onAdd, onEdit, onDelete, onSta
   return <section className="workspace-panel time-block-widget" aria-label="Time blocking"><div className="time-block-heading"><span className="panel-eyebrow">MAKE ROOM FOR FOCUS</span><span className="time-block-day">{selectedDay}</span></div><h3>Time block</h3><p className="time-block-hint">Set aside a little time for what matters.</p><form className="time-block-form" onSubmit={saveBlock}><label>SUBJECT<input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={42} aria-label="Study block subject" /></label><div className="time-block-fields"><label>START<select value={time} onChange={(event) => setTime(event.target.value)} aria-label="Study block start time">{timeOptions.map((option) => <option key={option}>{option}</option>)}</select></label><label>LENGTH<select value={duration} onChange={(event) => setDuration(event.target.value)} aria-label="Study block length">{durationOptions.map((option) => <option key={option} value={option}>{option} min</option>)}</select></label></div>{error && <span role="alert" className="demo-footnote">{error}</span>}<button className="time-block-add" type="submit"><Plus size={13} /> {editingId ? 'Save changes' : `Add to ${selectedDay}`}</button>{editingId && <button type="button" className="subtle-button" onClick={resetForm}>Cancel edit</button>}</form><div className="time-block-list" aria-live="polite">{daySessions.length === 0 ? <span className="time-block-empty"><Clock3 size={12} /> Your added blocks will appear here.</span> : daySessions.map((block) => <div className="time-block-item" key={block.id}><span className="time-block-item-time">{block.time}</span><span className="time-block-item-copy"><b>{block.subject}</b><small>{block.length} · {block.day}</small></span><button type="button" className="subtle-button" aria-label={`Edit ${block.subject} block`} onClick={() => beginEdit(block)}>Edit</button><button type="button" aria-label={`Remove ${block.subject} block`} onClick={() => { onDelete(block); if (editingId === block.id) resetForm(); onStatus(`Removed ${block.subject} from ${block.day}.`); }}>×</button></div>)}</div></section>;
 }
 
-function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSessions, completed, onToggle, range, setRange, progress, progressLoading, progressError, backendEnabled, prioritiesLoaded, prioritiesAvailable, priorityLoading, priorityError, deadlines, deadlinesLoading, deadlinesError, scheduleLoading, scheduleError, onStatus, onAddSession, onEditSession, onDeleteSession, subjects, subjectsLoading, displayName, profileLoading }: { onChange: (section: DashboardSection) => void; selectedDay: string; setSelectedDay: (day: string) => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; completed: Record<string, boolean>; onToggle: (task: StudyTask, day: string) => void; range: Range; setRange: (range: Range) => void; progress: ProgressSummary | null; progressLoading: boolean; progressError: string; backendEnabled: boolean; prioritiesLoaded: boolean; prioritiesAvailable: boolean; priorityLoading: boolean; priorityError: string; deadlines: Deadline[] | null; deadlinesLoading: boolean; deadlinesError: string; scheduleLoading: boolean; scheduleError: string; onStatus: (message: string) => void; onAddSession: (session: CustomSession) => void; onEditSession: (session: CustomSession) => void; onDeleteSession: (session: CustomSession) => void; subjects: Subject[]; subjectsLoading: boolean; displayName: string; profileLoading: boolean }) {
-  const tasks = getTasks(selectedDay, sessions, backendSessions);
+function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSessions, demoSchedulePreview, demoScheduleMessage, completed, onToggle, range, setRange, progress, progressLoading, progressError, backendEnabled, prioritiesLoaded, prioritiesAvailable, priorityLoading, priorityError, deadlines, deadlinesLoading, deadlinesError, scheduleLoading, scheduleError, onStatus, onAddSession, onEditSession, onDeleteSession, subjects, subjectsLoading, displayName, profileLoading }: { onChange: (section: DashboardSection) => void; selectedDay: string; setSelectedDay: (day: string) => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; demoSchedulePreview: boolean; demoScheduleMessage: string; completed: Record<string, boolean>; onToggle: (task: StudyTask, day: string) => void; range: Range; setRange: (range: Range) => void; progress: ProgressSummary | null; progressLoading: boolean; progressError: string; backendEnabled: boolean; prioritiesLoaded: boolean; prioritiesAvailable: boolean; priorityLoading: boolean; priorityError: string; deadlines: Deadline[] | null; deadlinesLoading: boolean; deadlinesError: string; scheduleLoading: boolean; scheduleError: string; onStatus: (message: string) => void; onAddSession: (session: CustomSession) => void; onEditSession: (session: CustomSession) => void; onDeleteSession: (session: CustomSession) => void; subjects: Subject[]; subjectsLoading: boolean; displayName: string; profileLoading: boolean }) {
+  const tasks = getTasks(selectedDay, sessions, backendSessions, demoSchedulePreview);
   const upcomingDeadlines = deadlines?.filter((deadline) => deadline.status !== 'completed') ?? [];
   const normalizedProgress = getProgressDisplayData({
     progress,
@@ -198,7 +188,7 @@ function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSess
           {!backendEnabled && <RangeSelector value={range} onChange={setRange} label="Choose overview date range" />}
         </div>
         <div className="overview-planning-row">
-          <WeekCalendar selectedDay={selectedDay} onSelect={setSelectedDay} onOpenSchedule={() => onChange('Schedule')} sessions={sessions} backendSessions={backendSessions} loading={scheduleLoading} error={scheduleError} />
+          <WeekCalendar selectedDay={selectedDay} onSelect={setSelectedDay} onOpenSchedule={() => onChange('Schedule')} sessions={sessions} backendSessions={backendSessions} demoSchedulePreview={demoSchedulePreview} demoScheduleMessage={demoScheduleMessage} loading={scheduleLoading} error={scheduleError} />
           {backendEnabled
             ? <div className="workspace-panel schedule-note"><Sparkles size={15} /><span><b>Connected schedule.</b> Generate saved study sessions from the Schedule page.</span><SectionButton section="Schedule" onClick={() => onChange('Schedule')} /></div>
             : <TimeBlockWidget selectedDay={selectedDay} sessions={sessions} onAdd={onAddSession} onEdit={onEditSession} onDelete={onDeleteSession} onStatus={onStatus} />}
@@ -230,7 +220,7 @@ function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSess
               <div><span className="panel-eyebrow">TODAY, IN FOCUS</span><h3>The day ahead</h3></div>
               <SectionButton section="Schedule" onClick={() => onChange('Schedule')} />
             </div>
-            {backendEnabled && backendSessions !== null && backendSessions.length === 0 && !scheduleLoading && !scheduleError && <p className="demo-footnote">Demo schedule preview · No saved sessions yet</p>}
+            {demoSchedulePreview && <p className="demo-footnote">{demoScheduleMessage}</p>}
             <TaskList day={selectedDay} tasks={tasks} completed={completed} onToggle={onToggle} loading={scheduleLoading} error={scheduleError} />
           </section>
           <section className="workspace-panel adapt-card">
@@ -246,7 +236,7 @@ function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSess
             <div><span className="panel-eyebrow">YOUR CLASSES, IN CONTEXT</span><h3>Courses in motion</h3></div>
             <SectionButton section="Subjects" onClick={() => onChange('Subjects')} />
           </div>
-          <div className="subject-progress-list">{subjects.length === 0 ? <p className="demo-footnote">{subjectsLoading ? 'Loading connected subjects…' : backendEnabled ? 'No connected subjects are available.' : 'Sample subjects · not live data.'}</p> : subjects.slice(0, 3).map((subject) => <div className="subject-progress-row" key={subject.code}><span className={`subject-indicator ${subject.color}`} /><span className="subject-title">{subject.name}<small>{subject.metricLabel === 'PREVIOUS MARKS' ? `Previous marks: ${subject.progress}% · ${parsePriorityNote(subject.next).priority || 'Priority details unavailable'}` : subject.next}</small></span><span className="subject-bar"><i style={{ width: `${subject.progress}%` }} /></span><span className="subject-percent">{subject.progress}%</span></div>)}</div>
+          <div className="subject-progress-list">{subjects.length === 0 ? <p className="demo-footnote">{subjectsLoading ? 'Loading connected subjects…' : 'No subjects are available yet.'}</p> : subjects.slice(0, 3).map((subject) => <div className="subject-progress-row" key={subject.code}><span className={`subject-indicator ${subject.color}`} /><span className="subject-title">{subject.name}<small>{subject.metricLabel === 'PREVIOUS MARKS' || subject.metricLabel === 'SAMPLE MARKS' ? `${subject.metricLabel === 'SAMPLE MARKS' ? 'Sample marks' : 'Previous marks'}: ${subject.progress}% · ${parsePriorityNote(subject.next).priority || 'Priority guidance not available'}` : subject.next}</small></span><span className="subject-bar"><i style={{ width: `${subject.progress}%` }} /></span><span className="subject-percent">{subject.progress}%</span></div>)}</div>
         </section>
         <section className="workspace-panel subjects-panel" aria-label="Upcoming academic deadlines">
           <div className="panel-heading"><div><span className="panel-eyebrow">COMING UP</span><h3>Academic deadlines</h3></div><SectionButton section="Goals" onClick={() => onChange('Goals')} /></div>
@@ -264,17 +254,17 @@ function Overview({ onChange, selectedDay, setSelectedDay, sessions, backendSess
     </div>
   );
 }
-function Schedule({ day, setDay, sessions, backendSessions, completed, onToggle, onOpenPlanner, onGenerateSchedule, isGeneratingSchedule, connected, loading, error }: { day: string; setDay: (day: string) => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; completed: Record<string, boolean>; onToggle: (task: StudyTask, day: string) => void; onOpenPlanner: () => void; onGenerateSchedule: () => void; isGeneratingSchedule: boolean; connected: boolean; loading: boolean; error: string }) {
-  const tasks = getTasks(day, sessions, backendSessions);
-  const demoPreview = connected && backendSessions !== null && backendSessions.length === 0 && !loading && !error;
-  return <><div className="section-intro-line"><p>A week shaped around your time, energy, and priorities.</p><span>{connected && <button className="subtle-button" type="button" onClick={onGenerateSchedule} disabled={isGeneratingSchedule || loading}><Sparkles size={13} /> {isGeneratingSchedule ? 'Generating schedule…' : 'Generate study schedule'}</button>} {!connected && <button className="subtle-button" type="button" onClick={onOpenPlanner}><Plus size={13} /> Add a study block</button>}</span></div>{demoPreview && <p className="demo-footnote">Demo schedule preview · No saved sessions yet</p>}<div className="workspace-panel week-picker" role="group" aria-label="Choose schedule day">{week.map((label, index) => <button key={label} type="button" aria-pressed={day === label} aria-label={`${label}, ${shortDate(calendarDates[index])}`} className={`week-day ${day === label ? 'is-selected' : ''}`} onClick={() => setDay(label)}><span>{label}</span><b>{calendarDates[index].getDate()}</b><i className={getTasks(label, sessions, backendSessions).length ? 'has-items' : ''} /></button>)}</div><section className="workspace-panel schedule-detail"><div className="panel-heading"><div><span className="panel-eyebrow">{day}, {shortDate(calendarDates[week.indexOf(day)])}</span><h3>Study blocks</h3></div><span className="block-count">{loading ? 'LOADING' : `${tasks.length} ${tasks.length === 1 ? 'BLOCK' : 'BLOCKS'}`}</span></div><TaskList day={day} tasks={tasks} completed={completed} onToggle={onToggle} loading={loading} error={error} /></section><div className="workspace-panel schedule-note"><Sparkles size={15} /><span><b>{demoPreview ? 'Demo schedule preview.' : connected ? 'Saved schedule data.' : 'There’s room in this plan.'}</b> {demoPreview ? 'No saved sessions yet; these sample blocks are not saved to your account.' : connected ? 'Session changes are made through the connected schedule tools.' : 'If your day shifts, your study blocks can shift with it.'}</span></div></>;
+function Schedule({ day, setDay, sessions, backendSessions, demoSchedulePreview, demoScheduleMessage, completed, onToggle, onOpenPlanner, onGenerateSchedule, isGeneratingSchedule, connected, loading, error }: { day: string; setDay: (day: string) => void; sessions: CustomSession[]; backendSessions: CustomSession[] | null; demoSchedulePreview: boolean; demoScheduleMessage: string; completed: Record<string, boolean>; onToggle: (task: StudyTask, day: string) => void; onOpenPlanner: () => void; onGenerateSchedule: () => void; isGeneratingSchedule: boolean; connected: boolean; loading: boolean; error: string }) {
+  const tasks = getTasks(day, sessions, backendSessions, demoSchedulePreview);
+  return <><div className="section-intro-line"><p>A week shaped around your time, energy, and priorities.</p><span>{connected && <button className="subtle-button" type="button" onClick={onGenerateSchedule} disabled={isGeneratingSchedule || loading}><Sparkles size={13} /> {isGeneratingSchedule ? 'Generating schedule…' : 'Generate study schedule'}</button>} {!connected && <button className="subtle-button" type="button" onClick={onOpenPlanner}><Plus size={13} /> Add a study block</button>}</span></div>{demoSchedulePreview && <p className="demo-footnote">{demoScheduleMessage}</p>}<div className="workspace-panel week-picker" role="group" aria-label="Choose schedule day">{week.map((label, index) => <button key={label} type="button" aria-pressed={day === label} aria-label={`${label}, ${shortDate(calendarDates[index])}`} className={`week-day ${day === label ? 'is-selected' : ''}`} onClick={() => setDay(label)}><span>{label}</span><b>{calendarDates[index].getDate()}</b><i className={getTasks(label, sessions, backendSessions, demoSchedulePreview).length ? 'has-items' : ''} /></button>)}</div><section className="workspace-panel schedule-detail"><div className="panel-heading"><div><span className="panel-eyebrow">{day}, {shortDate(calendarDates[week.indexOf(day)])}</span><h3>Study blocks</h3></div><span className="block-count">{loading ? 'LOADING' : `${tasks.length} ${tasks.length === 1 ? 'BLOCK' : 'BLOCKS'}`}</span></div><TaskList day={day} tasks={tasks} completed={completed} onToggle={onToggle} loading={loading} error={error} /></section><div className="workspace-panel schedule-note"><Sparkles size={15} /><span><b>{demoSchedulePreview ? 'Demo schedule preview.' : connected ? 'Saved schedule data.' : 'There’s room in this plan.'}</b> {demoSchedulePreview ? `${error ? 'Connected schedule data is unavailable; ' : ''}these sample blocks are not saved to your account.` : connected ? 'Session changes are made through the connected schedule tools.' : 'If your day shifts, your study blocks can shift with it.'}</span></div></>;
 }
 function SubjectActions({ subject, onEdit, onRemove, onView }: { subject: Subject; onEdit: () => void; onRemove: () => void; onView: () => void }) {
   const [open, setOpen] = useState(false);
   return <span><button type="button" className="subtle-button" aria-label={`More actions for ${subject.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}><MoreHorizontal size={15} /></button>{open && <span role="menu" aria-label={`${subject.name} actions`}><button type="button" className="subtle-button" role="menuitem" onClick={() => { onView(); setOpen(false); }}>View</button><button type="button" className="subtle-button" role="menuitem" onClick={() => { onEdit(); setOpen(false); }}>Edit</button><button type="button" className="subtle-button" role="menuitem" onClick={() => { onRemove(); setOpen(false); }}>Remove</button></span>}</span>;
 }
-function Subjects({ subjects, onAdd, onEdit, onRemove, onStatus, connected, loading, error }: { subjects: Subject[]; onAdd: () => void; onEdit: (subject: Subject) => void; onRemove: (subject: Subject) => void; onStatus: (message: string) => void; connected: boolean; loading: boolean; error: string }) {
-  return <><div className="section-intro-line"><p>A clear view of the work ahead in each course.</p>{!connected && <button className="subtle-button" type="button" onClick={onAdd}><Plus size={13} /> Add a subject</button>}</div>{subjects.length === 0 ? <p className="demo-footnote">{loading ? 'Loading connected subjects and priorities…' : error || (connected ? 'No subjects are saved to this study account yet.' : 'Sample subjects are unavailable.')}</p> : <div className="subject-card-grid">{subjects.map((subject, i) => <article className="workspace-panel subject-card" key={subject.code}><div className="subject-card-top"><span className={`subject-indicator ${subject.color}`} />{!connected && !/^(?:it[-_])?[a-f0-9]{8,}$/i.test(subject.code) && <span>{subject.code}</span>}{!connected && <SubjectActions subject={subject} onView={() => onStatus(`${subject.name}: ${subject.metricLabel === 'PREVIOUS MARKS' ? `${subject.progress}% previous marks` : `${subject.progress}% course rhythm`}, ${subject.next}.`)} onEdit={() => onEdit(subject)} onRemove={() => onRemove(subject)} />}</div><h3>{subject.name}</h3><p>{subject.metricLabel === 'PREVIOUS MARKS' ? 'Connected subject · previous marks' : 'Sample subject · not connected'}</p><div className="subject-card-progress"><div><span>{subject.metricLabel ?? 'COURSE RHYTHM'}</span><b>{subject.progress}%</b></div><span className="subject-bar"><i style={{ width: `${subject.progress}%` }} /></span></div><div className="subject-card-next">{subject.metricLabel === 'PREVIOUS MARKS' ? <><span>PRIORITY NOTE</span><PriorityDetails note={subject.next} /></> : <><span>NEXT UP</span><b>{subject.next}</b></>}</div><span className="subject-card-number">0{i + 1}</span></article>)}</div>}</>;
+function Subjects({ subjects, onAdd, onEdit, onRemove, onStatus, connected, canManage, loading, error }: { subjects: Subject[]; onAdd: () => void; onEdit: (subject: Subject) => void; onRemove: (subject: Subject) => void; onStatus: (message: string) => void; connected: boolean; canManage: boolean; loading: boolean; error: string }) {
+  const previewSubjects = subjects.some((subject) => subject.metricLabel === 'SAMPLE MARKS');
+  return <><div className="section-intro-line"><p>A clear view of the work ahead in each course.</p>{canManage && <button className="subtle-button" type="button" onClick={onAdd}><Plus size={13} /> Add a subject</button>}</div>{error && <p className="demo-footnote" role="alert">{error}</p>}{previewSubjects && <p className="demo-footnote">Demo subject preview · sample marks and priority cues are not saved to an account.</p>}{subjects.length === 0 ? <p className="demo-footnote">{loading ? 'Loading connected subjects and priorities…' : error ? 'Subject insights could not be loaded.' : connected ? 'No subjects are saved to this study account yet.' : 'Sample subjects are unavailable.'}</p> : <div className="subject-card-grid">{subjects.map((subject, i) => <article className="workspace-panel subject-card" key={subject.code}><div className="subject-card-top"><span className={`subject-indicator ${subject.color}`} />{!connected && !/^(?:it[-_])?[a-f0-9]{8,}$/i.test(subject.code) && <span>{subject.code}</span>}{canManage && <SubjectActions subject={subject} onView={() => onStatus(`${subject.name}: ${subject.metricLabel === 'PREVIOUS MARKS' || subject.metricLabel === 'SAMPLE MARKS' ? `${subject.progress}% previous marks` : `${subject.progress}% course rhythm`}, ${subject.next}.`)} onEdit={() => onEdit(subject)} onRemove={() => onRemove(subject)} />}</div><h3>{subject.name}</h3><p>{subject.metricLabel === 'PREVIOUS MARKS' ? 'Connected subject · previous marks' : subject.metricLabel === 'SAMPLE MARKS' ? 'Demo subject · sample marks' : 'Sample subject · not connected'}</p><div className="subject-card-progress"><div><span>{subject.metricLabel ?? 'COURSE RHYTHM'}</span><b>{subject.progress}%</b></div><span className="subject-bar"><i style={{ width: `${subject.progress}%` }} /></span></div><div className="subject-card-next">{subject.metricLabel === 'PREVIOUS MARKS' || subject.metricLabel === 'SAMPLE MARKS' ? <><span>PRIORITY NOTE</span><PriorityDetails note={subject.next} /></> : <><span>NEXT UP</span><b>{subject.next}</b></>}</div><span className="subject-card-number">0{i + 1}</span></article>)}</div>}</>;
 }
 function sessionIsComplete(task: StudyTask) {
   return task.status === 'completed';
@@ -318,8 +308,7 @@ function getProgressDisplayData({
   const missedCount = Math.max(progress?.missedSessions ?? 0, realSessions.filter(sessionIsMissed).length);
   const hasRealProgress = focusedHours > 0 || completedCount > 0 || missedCount > 0;
   const demoPreviewMode = !backendEnabled || (
-    !progressLoading && !sessionsLoading && !progressError && !sessionsError
-    && progress !== null && !hasRealProgress && realSessions.length === 0
+    !progressLoading && !sessionsLoading && !hasRealProgress
   );
   const completedDates = [...new Set(realSessions
     .filter(sessionIsComplete)
@@ -341,7 +330,7 @@ function getProgressDisplayData({
     }
   }
   const streakDays = demoPreviewMode
-    ? 5
+    ? studyPreviewProgress.streakDays
     : progress?.streakDays ?? derivedStreak;
   const daily = progress?.daily.length
     ? progress.daily.map((item) => ({
@@ -358,31 +347,34 @@ function getProgressDisplayData({
             .reduce((total, session) => total + (Number.parseInt(session.length, 10) || 0), 0) / 60,
         }))
       : [];
-  const weeklyGoalHours = demoPreviewMode ? 10 : progress?.weeklyGoalHours ?? null;
-  const weeklyHours = demoPreviewMode ? 7.1 : daily.reduce((total, item) => total + item.hours, 0);
+  const weeklyGoalHours = demoPreviewMode ? studyPreviewProgress.weeklyGoalHours : progress?.weeklyGoalHours ?? null;
+  const weeklyHours = demoPreviewMode ? studyPreviewProgress.focusedHours : daily.reduce((total, item) => total + item.hours, 0);
   const weeklyProgress = demoPreviewMode
-    ? 71
+    ? studyPreviewProgress.weeklyProgress
     : weeklyGoalHours && daily.length
       ? Math.min(100, Math.round((weeklyHours / weeklyGoalHours) * 100))
       : null;
   return {
     demoPreviewMode,
-    focusedHours: demoPreviewMode ? 7.1 : focusedHours,
-    completedCount: demoPreviewMode ? 10 : completedCount,
-    missedCount: demoPreviewMode ? 2 : missedCount,
+    previewUnavailable: Boolean(progressError || sessionsError),
+    focusedHours: demoPreviewMode ? studyPreviewProgress.focusedHours : focusedHours,
+    completedCount: demoPreviewMode ? studyPreviewProgress.completedSessions : completedCount,
+    missedCount: demoPreviewMode ? studyPreviewProgress.missedSessions : missedCount,
     streakDays,
     weeklyGoalHours,
     weeklyHours,
     weeklyProgress,
-    daily: demoPreviewMode ? demoFocusByDay : daily,
+    daily: demoPreviewMode ? studyPreviewDaily : daily,
   };
 }
 
-function Progress({ range, setRange, backendProgress, backendEnabled, loading, error, sessions, sessionsLoading, sessionsError, completed, onToggleSession }: {
+function Progress({ range, setRange, backendProgress, backendEnabled, demoSchedulePreview, demoScheduleMessage, loading, error, sessions, sessionsLoading, sessionsError, completed, onToggleSession }: {
   range: Range;
   setRange: (range: Range) => void;
   backendProgress: ProgressSummary | null;
   backendEnabled: boolean;
+  demoSchedulePreview: boolean;
+  demoScheduleMessage: string;
   loading: boolean;
   error: string;
   sessions: CustomSession[] | null;
@@ -401,12 +393,10 @@ function Progress({ range, setRange, backendProgress, backendEnabled, loading, e
     sessionsError,
   });
   const realSessions = sessions ?? [];
-  const { demoPreviewMode, focusedHours, completedCount, missedCount, streakDays, weeklyGoalHours, weeklyProgress } = normalized;
-  const showDemoTasks = !backendEnabled || (
-    !sessionsLoading && !sessionsError && realSessions.length === 0
-  );
-  const taskSessions = showDemoTasks ? demoStudySessions : realSessions;
-  const isDemoSession = (session: CustomSession) => session.id.startsWith('demo-progress-');
+  const { demoPreviewMode, previewUnavailable, focusedHours, completedCount, missedCount, streakDays, weeklyGoalHours, weeklyProgress } = normalized;
+  const showDemoTasks = demoSchedulePreview;
+  const taskSessions = showDemoTasks ? demoWeeklySchedule : realSessions;
+  const isDemoSession = (session: CustomSession) => session.id.startsWith('demo-schedule-');
   const isTaskComplete = (session: CustomSession) => {
     const key = `${session.day}:${session.id}`;
     return isDemoSession(session) && Object.prototype.hasOwnProperty.call(completed, key)
@@ -424,7 +414,7 @@ function Progress({ range, setRange, backendProgress, backendEnabled, loading, e
         <p>A record of showing up. Progress at your own pace.</p>
         {!backendEnabled && <RangeSelector value={range} onChange={setRange} label="Choose overview date range" />}
     </div>
-    {demoPreviewMode && <p className="demo-footnote">Demo activity preview · sample values are shown separately from your connected account.</p>}
+    {demoPreviewMode && <p className="demo-footnote">Demo activity preview · {previewUnavailable ? 'Connected activity could not be loaded; these sample values are not saved.' : 'sample totals and focus chart are separate from saved account history.'}</p>}
     <div className="progress-summary">
         <article className="workspace-panel progress-total"><span className="panel-eyebrow">FOCUSED HOURS · {demoPreviewMode ? 'SAMPLE' : 'ALL TIME'}</span><b>{demoPreviewMode ? '7.1' : focusedHours > 0 ? focusedHours.toFixed(1) : 'No focus time'} <small>{demoPreviewMode || focusedHours > 0 ? 'hours' : ''}</small></b><span><ArrowUpRight size={13} /> {demoPreviewMode ? 'Demo activity preview' : focusedHours > 0 ? 'Saved and completed study sessions' : 'No focus time recorded yet'}</span></article>
         <article className="workspace-panel progress-total"><span className="panel-eyebrow">SESSIONS COMPLETED</span><b>{demoPreviewMode ? '10' : completedCount} <small>sessions</small></b><span><Check size={13} /> {demoPreviewMode ? '2 missed · demo activity preview' : missedCount > 0 ? `${missedCount} missed` : 'No missed sessions recorded'}</span></article>
@@ -445,12 +435,12 @@ function Progress({ range, setRange, backendProgress, backendEnabled, loading, e
         <div className="goals-list-body">{subjectRows.map((subject) => <div className="goal-row" key={subject.subjectId}><span className="goal-copy"><span className="goal-category">PREVIOUS MARKS · {subject.previousMarks}%</span><b>{subject.subjectName}</b><small>{subject.focusedHours > 0 ? `${subject.focusedHours.toFixed(1)} focused hours` : 'No focus time recorded'} · {subject.completedSessions} completed · {subject.missedSessions} missed</small></span></div>)}</div>
     </section>}
     <section className="workspace-panel goals-list" aria-label="Study session task completion">
-        <div className="goals-list-head"><div><span className="panel-eyebrow">{showDemoTasks ? 'DEMO STUDY SESSIONS' : 'SAVED STUDY SESSIONS'}</span><h3>Tasks / Study sessions</h3></div><span>{sessionsLoading ? 'Loading sessions…' : sessionsError ? 'Sessions unavailable' : `${completedTasks} of ${taskSessions.length} completed`}</span></div>
-        {showDemoTasks && !sessionsLoading && !sessionsError && <p className="demo-footnote">Demo study sessions · checkbox changes are saved locally and never sent to your account.</p>}
-        {!sessionsLoading && !sessionsError && <div className="goals-overview-top" aria-label="Session totals"><span className="goal-count-badge">{pendingTasks} pending</span><span className="goal-count-badge">{missedTasks} missed / skipped</span><span className="goal-count-badge">{taskSessions.length} total</span>{showDemoTasks && <span className="goal-count-badge">{taskSessions.length ? Math.round((completedTasks / taskSessions.length) * 100) : 0}% complete</span>}</div>}
+        <div className="goals-list-head"><div><span className="panel-eyebrow">{showDemoTasks ? 'DEMO WEEKLY SCHEDULE' : 'SAVED STUDY SESSIONS'}</span><h3>Tasks / Study sessions</h3></div><span>{sessionsLoading ? 'Loading sessions…' : sessionsError && !showDemoTasks ? 'Sessions unavailable' : `${completedTasks} of ${taskSessions.length} completed`}</span></div>
+        {showDemoTasks && !sessionsLoading && <p className="demo-footnote">{demoScheduleMessage} · checkbox changes are saved locally and never sent to your account.</p>}
+        {!sessionsLoading && (!sessionsError || showDemoTasks) && <div className="goals-overview-top" aria-label="Session totals"><span className="goal-count-badge">{pendingTasks} pending</span><span className="goal-count-badge">{missedTasks} missed / skipped</span><span className="goal-count-badge">{taskSessions.length} total</span>{showDemoTasks && <span className="goal-count-badge">{taskSessions.length ? Math.round((completedTasks / taskSessions.length) * 100) : 0}% complete</span>}</div>}
         <div className="goals-list-body">
           {sessionsLoading ? <p className="demo-footnote">Loading saved study sessions…</p>
-            : sessionsError ? <p className="demo-footnote" role="alert">{sessionsError}</p>
+            : sessionsError && !showDemoTasks ? <p className="demo-footnote" role="alert">Saved study sessions could not be loaded.</p>
             : taskSessions.length === 0 ? <p className="demo-footnote">No study sessions are available yet.</p>
               : taskSessions.map((task) => {
                 const complete = isTaskComplete(task);
@@ -482,8 +472,12 @@ export default function DashboardPage() {
   const [selectedDay, setSelectedDay] = useState(() => week[(new Date().getDay() + 6) % 7]);
   const [planning, setPlanning] = useState(loadPlanningState);
   const [subjects, setSubjects] = useState(hasApiBaseUrl ? [] : initialSubjects);
+  const [profileSubjects, setProfileSubjects] = useState<StudentSubject[]>([]);
+  const [profileMissing, setProfileMissing] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const [displayName, setDisplayName] = useState(hasApiBaseUrl ? '' : 'Student');
   const [profileName, setProfileName] = useState(hasApiBaseUrl ? '' : 'Student');
+  const [identityLoaded, setIdentityLoaded] = useState(!hasApiBaseUrl);
   const [goals, setGoals] = useState(initialGoals);
   const [backendSessions, setBackendSessions] = useState<CustomSession[] | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(hasApiBaseUrl);
@@ -508,36 +502,68 @@ export default function DashboardPage() {
   const [statusMessage, setStatusMessage] = useState('');
   const activeKey = params.get('section')?.toLowerCase() ?? 'overview';
   const active = sectionNames[activeKey] ?? 'Overview';
+  const demoSchedulePreview = !hasApiBaseUrl || (
+    !scheduleLoading && !backendSessions?.length && (Boolean(scheduleError) || backendSessions !== null)
+  );
+  const demoScheduleMessage = scheduleError
+    ? 'Demo schedule preview · Connected schedule unavailable'
+    : 'Demo schedule preview · No saved sessions yet';
   const selectSection = (section: DashboardSection) => setParams({ section: section.toLowerCase() }, { replace: true });
   useEffect(() => { try { window.localStorage.setItem('adaptivestudy-dashboard-planning', JSON.stringify(planning)); } catch { setStatusMessage('Planning changes are active for this visit but could not be saved locally.'); } }, [planning]);
   useEffect(() => {
-    if (!hasApiBaseUrl) return;
+    if (!hasApiBaseUrl) {
+      let mounted = true;
+      void services.student.getProfile().then((profile) => {
+        if (!mounted) return;
+        const name = profile.fullName.trim() || profile.displayName.trim();
+        const savedSubjects = profile.subjects ?? [];
+        setDisplayName(name);
+        setProfileName(name);
+        setProfileSubjects(savedSubjects);
+        setSubjects(savedSubjects.length ? subjectsFromProfile(savedSubjects) : initialSubjects);
+      }).catch((error: unknown) => {
+        if (mounted) setProfileError(error instanceof Error ? error.message : 'The local study profile could not be loaded.');
+      });
+      return () => { mounted = false; };
+    }
     let mounted = true;
     const load = async () => {
+      const identityRequest = services.auth.getCurrentSession().then((session) => {
+        const name = session?.user.displayName.trim();
+        if (mounted) {
+          setIdentityLoaded(true);
+          if (name && !/^(?:student|demo student)$/i.test(name)) {
+            setDisplayName((current) => current || name);
+            setProfileName((current) => current || name);
+          }
+        }
+        return session;
+      }, (error: unknown) => {
+        if (mounted) {
+          setIdentityLoaded(true);
+          setApiError('Your signed-in identity could not be loaded.');
+        }
+        throw error;
+      });
       const profileRequest = services.student.getProfile().then((profile) => {
         if (mounted) {
-          setDisplayName(profile.displayName);
-          setProfileName(profile.fullName);
-          const profileSubjects = profile.subjects ?? [];
-          if (profileSubjects.length) {
-            const colors = ['blue', 'ice', 'steel', 'sky'];
-            setSubjects((current) => current.length ? current : profileSubjects.map((subject, index) => ({
-              name: subject.name,
-              code: subject.id,
-              color: colors[index % colors.length],
-              progress: Math.max(0, Math.min(100, Math.round(subject.previousMarks))),
-              metricLabel: 'PREVIOUS MARKS',
-              next: `${subject.examCount} exams recorded · priority insight unavailable`,
-            })));
-          }
+          const name = profile.fullName.trim() || profile.displayName.trim();
+          setDisplayName(name);
+          setProfileName(name);
+          const savedSubjects = profile.subjects ?? [];
+          setProfileMissing(false);
+          setProfileError('');
+          setProfileSubjects(savedSubjects);
+          setSubjects(subjectsFromProfile(savedSubjects));
           setProfileLoading(false);
           setStatusMessage(`Connected profile for ${profile.fullName}.`);
         }
         return profile;
       }, (error: unknown) => {
         if (mounted) {
-          setDisplayName('');
-          setProfileName('');
+          const missing = isProfileMissingError(error);
+          setProfileMissing(missing);
+          setProfileError(missing ? '' : error instanceof Error ? error.message : 'The connected study profile could not be loaded.');
           setProfileLoading(false);
         }
         throw error;
@@ -552,7 +578,7 @@ export default function DashboardPage() {
       }, (error: unknown) => {
         if (mounted) {
           setProgressLoading(false);
-          setProgressError(error instanceof Error ? error.message : 'Progress could not be loaded.');
+          setProgressError(error instanceof TypeError ? 'Connected progress could not be reached.' : 'Connected progress could not be loaded.');
         }
         throw error;
       });
@@ -563,7 +589,7 @@ export default function DashboardPage() {
         }
         return result;
       }, (error: unknown) => {
-        if (mounted) setScheduleError(error instanceof Error ? error.message : 'Study sessions could not be loaded.');
+        if (mounted) setScheduleError(error instanceof TypeError ? 'Connected schedule could not be reached.' : 'Connected schedule could not be loaded.');
         throw error;
       }).finally(() => { if (mounted) setScheduleLoading(false); });
       const deadlinesRequest = services.deadlines.listDeadlines().then((result) => {
@@ -573,7 +599,7 @@ export default function DashboardPage() {
         }
         return result;
       }, (error: unknown) => {
-        if (mounted) setDeadlinesError(error instanceof Error ? error.message : 'Deadlines could not be loaded.');
+        if (mounted) setDeadlinesError(error instanceof TypeError ? 'Connected deadlines could not be reached.' : 'Connected deadlines could not be loaded.');
         throw error;
       }).finally(() => { if (mounted) setDeadlinesLoading(false); });
       const prioritiesRequest = services.priorities.listPriorities().then((result) => {
@@ -595,10 +621,11 @@ export default function DashboardPage() {
         }
         return result;
       }, (error: unknown) => {
-        if (mounted) setPriorityError(error instanceof Error ? error.message : 'Priority insights could not be loaded.');
+        if (mounted) setPriorityError(error instanceof TypeError ? 'Connected priority insights could not be reached.' : 'Connected priority insights could not be loaded.');
         throw error;
       }).finally(() => { if (mounted) setPriorityLoading(false); });
       const results = await Promise.allSettled([
+        identityRequest,
         profileRequest,
         scheduleRequest,
         progressRequest,
@@ -606,17 +633,10 @@ export default function DashboardPage() {
         prioritiesRequest,
       ]);
       if (!mounted) return;
-      const failures: string[] = [];
-      const captureFailure = (result: PromiseSettledResult<unknown>) => {
-        if (result.status === 'rejected') failures.push(result.reason instanceof Error ? result.reason.message : 'A backend data request failed.');
-      };
-      const [profileResult, scheduleResult, progressResult, deadlinesResult, priorityResult] = results;
-      captureFailure(profileResult);
-      captureFailure(scheduleResult);
-      captureFailure(progressResult);
-      captureFailure(deadlinesResult);
-      captureFailure(priorityResult);
-      setApiError([...new Set(failures)].join(' '));
+      const failedRequests = results.some((result, index) => (
+        result.status === 'rejected' && !(index === 1 && isProfileMissingError(result.reason))
+      ));
+      setApiError(failedRequests ? 'Some connected data could not be loaded. Clearly labeled sample previews are shown where needed.' : '');
       setBackendLoading(false);
     };
     void load();
@@ -634,7 +654,7 @@ export default function DashboardPage() {
         : 'No saved sessions were generated. The demo schedule preview is still available.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The study schedule could not be generated.';
-      setApiError(message);
+      setApiError('The connected schedule could not be generated.');
       setScheduleError(message);
       setStatusMessage('Schedule generation failed.');
     } finally {
@@ -654,7 +674,7 @@ export default function DashboardPage() {
         setApiError('');
         setStatusMessage(`${task.title} marked complete.`);
       } catch (error) {
-        setApiError(error instanceof Error ? error.message : 'The session status could not be updated.');
+        setApiError('The connected session status could not be updated.');
       }
       return;
     }
@@ -671,9 +691,113 @@ export default function DashboardPage() {
     setStatusMessage(`${task.title} marked ${currentlyComplete ? 'incomplete' : 'complete'}.`);
   }
   const updateSession = (session: CustomSession) => setPlanning((current) => ({ ...current, sessions: current.sessions.some((item) => item.id === session.id) ? current.sessions.map((item) => item.id === session.id ? session : item) : [...current.sessions, session] }));
-  const addSubject = () => { const name = window.prompt('Subject name'); if (!name?.trim()) return; const subject = { name: name.trim(), code: `CUSTOM${subjects.length + 1}`, color: 'blue', progress: 0, next: 'Choose your next step' }; setSubjects((current) => [...current, subject]); setStatusMessage(`${subject.name} added.`); };
-  const editSubject = (subject: Subject) => { const name = window.prompt('Edit subject name', subject.name); if (!name?.trim()) return; setSubjects((current) => current.map((item) => item.code === subject.code ? { ...item, name: name.trim() } : item)); setStatusMessage(`${subject.name} updated.`); };
-  const removeSubject = (subject: Subject) => { setSubjects((current) => current.filter((item) => item.code !== subject.code)); setStatusMessage(`${subject.name} removed.`); };
+  const saveProfileSubjects = async (nextSubjects: StudentSubject[]) => {
+    try {
+      let savedProfile: StudentProfile;
+      if (profileMissing) {
+        let fullName = profileName.trim() || displayName.trim();
+        if (!fullName || /^(?:student|demo student)$/i.test(fullName)) {
+          fullName = window.prompt('Your name for the study profile')?.trim() ?? '';
+        }
+        if (!fullName) throw new Error('A profile name is required to create your study profile.');
+        savedProfile = await services.student.createProfile({
+          fullName,
+          subjects: nextSubjects.map(({ name, previousMarks, examCount }) => ({ name, previousMarks, examCount })),
+        });
+      } else {
+        savedProfile = await services.student.updateProfile({ subjects: nextSubjects });
+      }
+      const savedSubjects = savedProfile.subjects ?? [];
+      setProfileSubjects(savedSubjects);
+      setSubjects(subjectsFromProfile(savedSubjects));
+      setProfileMissing(false);
+      setProfileError('');
+      setStatusMessage('Subject changes saved to your study profile.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Subject changes could not be saved.';
+      setProfileError(`Subject changes were not saved: ${message}`);
+      setStatusMessage('Subject changes were not saved.');
+    }
+  };
+  const addSubject = () => {
+    const name = window.prompt('Subject name')?.trim();
+    if (!name) return;
+    if (name.length > 120 || subjects.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      setProfileError('Enter a unique subject name with 120 characters or fewer.');
+      return;
+    }
+    const marksValue = window.prompt('Previous marks (0–100)');
+    if (marksValue === null) return;
+    const examCountValue = window.prompt('Completed exams (1–10)');
+    if (examCountValue === null) return;
+    const previousMarks = Number(marksValue);
+    const examCount = Number(examCountValue);
+    if (!Number.isFinite(previousMarks) || previousMarks < 0 || previousMarks > 100
+      || !Number.isInteger(examCount) || examCount < 1 || examCount > 10) {
+      setProfileError('Enter previous marks from 0 to 100 and a whole number of completed exams from 1 to 10.');
+      return;
+    }
+    setProfileError('');
+    void saveProfileSubjects([...profileSubjects, {
+      id: makeId('subject'),
+      name,
+      previousMarks,
+      examCount,
+      completedSessions: 0,
+      missedSessions: 0,
+    }]);
+  };
+  const editSubject = (subject: Subject) => {
+    const current = profileSubjects.find((item) => item.id === subject.code);
+    if (!current && hasApiBaseUrl) {
+      setProfileError('This connected subject is not available to edit. Reload the profile and try again.');
+      return;
+    }
+    if (!current) {
+      const name = window.prompt('Edit subject name', subject.name)?.trim();
+      if (!name) return;
+      setSubjects((items) => items.map((item) => item.code === subject.code ? { ...item, name } : item));
+      setStatusMessage(`${subject.name} updated in this demo.`);
+      return;
+    }
+    const name = window.prompt('Edit subject name', current.name)?.trim();
+    if (!name) return;
+    const marksValue = window.prompt('Previous marks (0–100)', String(current.previousMarks));
+    if (marksValue === null) return;
+    const examCountValue = window.prompt('Completed exams (1–10)', String(current.examCount));
+    if (examCountValue === null) return;
+    const previousMarks = Number(marksValue);
+    const examCount = Number(examCountValue);
+    if (name.length > 120 || profileSubjects.some((item) => item.id !== current.id && item.name.toLowerCase() === name.toLowerCase())
+      || !Number.isFinite(previousMarks) || previousMarks < 0 || previousMarks > 100
+      || !Number.isInteger(examCount) || examCount < 1 || examCount > 10) {
+      setProfileError('Enter a unique subject name, marks from 0 to 100, and a whole number of completed exams from 1 to 10.');
+      return;
+    }
+    setProfileError('');
+    void saveProfileSubjects(profileSubjects.map((item) => item.id === current.id
+      ? { ...item, name, previousMarks, examCount }
+      : item));
+  };
+  const removeSubject = (subject: Subject) => {
+    const current = profileSubjects.find((item) => item.id === subject.code);
+    if (!current && hasApiBaseUrl) {
+      setProfileError('This connected subject is not available to remove. Reload the profile and try again.');
+      return;
+    }
+    if (!window.confirm(`Remove ${subject.name} from your subjects?`)) return;
+    if (!current) {
+      setSubjects((items) => items.filter((item) => item.code !== subject.code));
+      setStatusMessage(`${subject.name} removed from this demo.`);
+      return;
+    }
+    if (profileSubjects.length <= 1) {
+      setProfileError('Keep at least one subject in your study profile.');
+      return;
+    }
+    setProfileError('');
+    void saveProfileSubjects(profileSubjects.filter((item) => item.id !== current.id));
+  };
   const addGoal = () => { const title = window.prompt('Intention'); if (!title?.trim()) return; const goal = { id: makeId('goal'), title: title.trim(), detail: 'A local intention for this week.', category: 'STUDY', target: 'THIS WEEK' }; setGoals((current) => [...current, goal]); setStatusMessage(`${goal.title} added.`); };
   const deadlineGoals: Goal[] = (backendDeadlines ?? []).map((deadline) => ({
     id: deadline.id,
@@ -683,13 +807,13 @@ export default function DashboardPage() {
     target: new Date(`${deadline.dueAt}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     subject: deadline.subject,
   }));
-  return <WorkspaceShell active={active} onSectionChange={selectSection} eyebrow={`YOUR STUDY SPACE / ${active.toUpperCase()}`} title={active === 'Overview' ? 'Your week, in rhythm.' : `${active}.`} profileName={profileName || (profileLoading ? 'Loading profile…' : 'Profile unavailable')} profileDetail={profileLoading ? 'Loading profile' : hasApiBaseUrl ? profileName ? 'Connected study profile' : 'Profile unavailable' : 'Computer Science · Year 2'}>
-    {hasApiBaseUrl && <div className="workspace-panel schedule-note" role={apiError ? 'alert' : 'status'}>{backendLoading ? 'Loading connected study data…' : apiError ? `Some connected data is unavailable; unsupported values are not fabricated. ${apiError}` : 'Connected study data loaded.'}</div>}
+  return <WorkspaceShell active={active} onSectionChange={selectSection} eyebrow={`YOUR STUDY SPACE / ${active.toUpperCase()}`} title={active === 'Overview' ? 'Your week, in rhythm.' : `${active}.`} profileName={profileName || (profileLoading ? 'Loading profile…' : 'Study space')} profileDetail={profileLoading ? 'Loading profile' : hasApiBaseUrl ? profileName ? 'Connected study profile' : 'Study profile' : 'Demo study profile'}>
+    <div className="workspace-panel schedule-note" role={apiError ? 'alert' : 'status'}>{backendLoading ? 'Loading connected study data…' : apiError || (!hasApiBaseUrl ? 'Demo preview · sample data is not saved to an account.' : 'Connected study data loaded.')}</div>
     <span aria-live="polite" role="status" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}>{statusMessage}</span>
-    {active === 'Overview' && <Overview onChange={selectSection} selectedDay={selectedDay} setSelectedDay={setSelectedDay} sessions={planning.sessions} backendSessions={backendSessions} completed={planning.completed} onToggle={toggleTask} range={overviewRange} setRange={setOverviewRange} progress={backendProgress} progressLoading={progressLoading} progressError={progressError} backendEnabled={hasApiBaseUrl} prioritiesLoaded={prioritiesLoaded} prioritiesAvailable={prioritiesAvailable} priorityLoading={priorityLoading} priorityError={priorityError} deadlines={backendDeadlines} deadlinesLoading={deadlinesLoading} deadlinesError={deadlinesError} scheduleLoading={scheduleLoading} scheduleError={scheduleError} onStatus={setStatusMessage} onAddSession={updateSession} onEditSession={updateSession} onDeleteSession={(session) => setPlanning((current) => ({ ...current, sessions: current.sessions.filter((item) => item.id !== session.id) }))} subjects={subjects} subjectsLoading={hasApiBaseUrl && (profileLoading || priorityLoading)} displayName={displayName} profileLoading={profileLoading} />}
-    {active === 'Schedule' && <Schedule day={selectedDay} setDay={setSelectedDay} sessions={planning.sessions} backendSessions={backendSessions} completed={planning.completed} onToggle={toggleTask} onOpenPlanner={() => { setStatusMessage('Planner opened. Add a block for the selected day.'); selectSection('Overview'); }} onGenerateSchedule={() => void generateBackendSchedule()} isGeneratingSchedule={scheduleGenerating} connected={hasApiBaseUrl} loading={scheduleLoading} error={scheduleError} />}
-    {active === 'Subjects' && <Subjects subjects={subjects} onAdd={addSubject} onEdit={editSubject} onRemove={removeSubject} onStatus={setStatusMessage} connected={hasApiBaseUrl} loading={hasApiBaseUrl && (profileLoading || priorityLoading)} error={priorityError} />}
-    {active === 'Progress' && <Progress range={progressRange} setRange={setProgressRange} backendProgress={backendProgress} backendEnabled={hasApiBaseUrl} loading={progressLoading} error={progressError} sessions={backendSessions} sessionsLoading={hasApiBaseUrl && backendSessions === null && scheduleLoading} sessionsError={hasApiBaseUrl && backendSessions === null && !scheduleLoading ? scheduleError : ''} completed={planning.completed} onToggleSession={(session) => void toggleTask(session, session.day)} />}
+    {active === 'Overview' && <Overview onChange={selectSection} selectedDay={selectedDay} setSelectedDay={setSelectedDay} sessions={planning.sessions} backendSessions={backendSessions} demoSchedulePreview={demoSchedulePreview} demoScheduleMessage={demoScheduleMessage} completed={planning.completed} onToggle={toggleTask} range={overviewRange} setRange={setOverviewRange} progress={backendProgress} progressLoading={progressLoading} progressError={progressError} backendEnabled={hasApiBaseUrl} prioritiesLoaded={prioritiesLoaded} prioritiesAvailable={prioritiesAvailable} priorityLoading={priorityLoading} priorityError={priorityError} deadlines={backendDeadlines} deadlinesLoading={deadlinesLoading} deadlinesError={deadlinesError} scheduleLoading={scheduleLoading} scheduleError={scheduleError} onStatus={setStatusMessage} onAddSession={updateSession} onEditSession={updateSession} onDeleteSession={(session) => setPlanning((current) => ({ ...current, sessions: current.sessions.filter((item) => item.id !== session.id) }))} subjects={subjects} subjectsLoading={hasApiBaseUrl && (profileLoading || priorityLoading)} displayName={displayName} profileLoading={profileLoading} />}
+    {active === 'Schedule' && <Schedule day={selectedDay} setDay={setSelectedDay} sessions={planning.sessions} backendSessions={backendSessions} demoSchedulePreview={demoSchedulePreview} demoScheduleMessage={demoScheduleMessage} completed={planning.completed} onToggle={toggleTask} onOpenPlanner={() => { setStatusMessage('Planner opened. Add a block for the selected day.'); selectSection('Overview'); }} onGenerateSchedule={() => void generateBackendSchedule()} isGeneratingSchedule={scheduleGenerating} connected={hasApiBaseUrl} loading={scheduleLoading} error={scheduleError} />}
+    {active === 'Subjects' && <Subjects subjects={subjects} onAdd={addSubject} onEdit={editSubject} onRemove={removeSubject} onStatus={setStatusMessage} connected={hasApiBaseUrl} canManage={!hasApiBaseUrl || (!profileLoading && (profileMissing ? identityLoaded : !profileError || profileSubjects.length > 0))} loading={hasApiBaseUrl && (profileLoading || priorityLoading)} error={profileError || (!profileMissing && subjects.length === 0 ? priorityError : '')} />}
+    {active === 'Progress' && <Progress range={progressRange} setRange={setProgressRange} backendProgress={backendProgress} backendEnabled={hasApiBaseUrl} demoSchedulePreview={demoSchedulePreview} demoScheduleMessage={demoScheduleMessage} loading={progressLoading} error={progressError} sessions={backendSessions} sessionsLoading={hasApiBaseUrl && backendSessions === null && scheduleLoading} sessionsError={hasApiBaseUrl && backendSessions === null && !scheduleLoading ? scheduleError : ''} completed={planning.completed} onToggleSession={(session) => void toggleTask(session, session.day)} />}
     {active === 'Goals' && <Goals goals={hasApiBaseUrl ? deadlineGoals : goals} checked={checkedGoals} onToggle={(goal) => { setCheckedGoals((current) => ({ ...current, [goal.id]: !current[goal.id] })); setStatusMessage(`${goal.title} ${checkedGoals[goal.id] ? 'unchecked' : 'complete'}.`); }} onAdd={addGoal} isDeadlineData={hasApiBaseUrl} loading={deadlinesLoading} error={deadlinesError} />}
   </WorkspaceShell>;
 }

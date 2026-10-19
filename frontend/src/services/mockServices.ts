@@ -8,6 +8,7 @@ import type {
   ProgressRange,
   ProgressSummary,
   StudentProfile,
+  StudentProfileCreate,
   StudyPriority,
   StudySession,
 } from './contracts';
@@ -43,6 +44,40 @@ const demoProfile: StudentProfile = {
   },
 };
 let profile = clone(demoProfile);
+const demoProfileStorageKey = 'adaptive-study-demo-profile';
+
+function saveDemoProfile(nextProfile: StudentProfile): StudentProfile {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(demoProfileStorageKey, JSON.stringify(nextProfile));
+    } catch {
+      throw new Error('The demo study profile could not be saved in this browser.');
+    }
+  }
+  profile = clone(nextProfile);
+  return clone(profile);
+}
+
+function loadDemoProfile(): StudentProfile {
+  if (typeof window === 'undefined') return clone(profile);
+  let stored: string | null;
+  try {
+    stored = window.localStorage.getItem(demoProfileStorageKey);
+  } catch {
+    throw new Error('The demo study profile could not be read from this browser.');
+  }
+  if (!stored) return clone(profile);
+  try {
+    const savedProfile = JSON.parse(stored) as StudentProfile;
+    if (!savedProfile || typeof savedProfile.fullName !== 'string' || !Array.isArray(savedProfile.subjects)) {
+      throw new Error('The saved demo study profile is incomplete.');
+    }
+    profile = savedProfile;
+    return clone(profile);
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'The saved demo study profile could not be read.');
+  }
+}
 
 const demoSchedule: CustomSession[] = Object.entries(schedules).flatMap(([day, tasks]) =>
   tasks.map((task) => ({ ...task, day, custom: false })),
@@ -113,12 +148,29 @@ export const mockServices: FrontendServices = {
   },
   student: {
     async getProfile() {
-      return clone(profile);
+      return loadDemoProfile();
+    },
+    async createProfile(input: StudentProfileCreate) {
+      const user = activeDemoSession?.user ?? demoUser;
+      return saveDemoProfile({
+        ...profile,
+        id: user.id,
+        fullName: input.fullName.trim(),
+        displayName: input.fullName.trim().split(/\s+/)[0] ?? 'Student',
+        email: user.email,
+        subjects: input.subjects.map((subject, index) => ({
+          id: makeId(`subject-${index + 1}`),
+          name: subject.name.trim(),
+          previousMarks: subject.previousMarks,
+          examCount: subject.examCount,
+          completedSessions: 0,
+          missedSessions: 0,
+        })),
+      });
     },
     async updateProfile(update) {
       const { preferences, ...fields } = update;
-      profile = { ...profile, ...fields, preferences: { ...profile.preferences, ...preferences } };
-      return clone(profile);
+      return saveDemoProfile({ ...profile, ...fields, preferences: { ...profile.preferences, ...preferences } });
     },
     async saveAvailability() {},
   },

@@ -22,6 +22,7 @@ import { hasApiBaseUrl, services } from '../services';
 import type { Deadline, ProgressSummary, StudySession, StudentProfile } from '../services/contracts';
 import { burnoutService } from '../services/burnoutService';
 import type { BurnoutPageData, BurnoutTrendPoint } from '../services/burnoutService';
+import { createBurnoutPreviewData } from '../data/burnoutDemoData';
 import './BurnoutPage.css';
 
 const navigation = [
@@ -60,7 +61,7 @@ function ConnectedBurnout({ data }: { data: ConnectedBurnoutData }) {
   const missedSessions = recentSessions.filter((session) => session.status === 'missed').length;
   const upcomingHours = upcomingSessions.reduce((sum, session) => sum + session.durationMinutes, 0) / 60;
   const overdueDeadlines = data.deadlines?.filter((deadline) => deadline.status === 'overdue' || (deadline.status !== 'completed' && deadline.dueAt < todayKey)).length ?? 0;
-  const hasEstimateInputs = data.sessions !== null && data.deadlines !== null && Boolean(data.sessions.length || data.deadlines.length);
+  const hasEstimateInputs = data.sessions !== null && data.deadlines !== null && Boolean(data.sessions.length || data.deadlines.length || data.progress);
   const missedPoints = recentSessions.length ? Math.round((missedSessions / recentSessions.length) * 35) : 0;
   const deadlinePoints = Math.min(overdueDeadlines * 12, 30);
   const workloadPoints = Math.min(Math.max(Math.round((upcomingHours - 12) * 3), 0), 35);
@@ -78,7 +79,7 @@ function ConnectedBurnout({ data }: { data: ConnectedBurnoutData }) {
     ...(overdueDeadlines ? ['Break an overdue deadline into a small next step.'] : []),
     ...(upcomingHours > 12 ? ['Consider spreading the upcoming study blocks across more days.'] : []),
   ];
-  if (!recommendations.length && hasEstimateInputs) recommendations.push('No elevated workload signals were found in the saved schedule and deadlines.');
+  if (!recommendations.length && hasEstimateInputs) recommendations.push('Keep the current study rhythm steady; no elevated pressure signal was found.');
 
   return <div className="site-shell burnout-app">
     <div className="burnout-layout">
@@ -96,14 +97,14 @@ function ConnectedBurnout({ data }: { data: ConnectedBurnoutData }) {
         <header className="burnout-topbar"><div className="burnout-crumb"><Link to="/">Adaptive Study</Link><span>/</span><b>Burnout</b></div><div className="burnout-topbar-right"><span className="burnout-demo-indicator"><i /> FRONTEND ESTIMATE</span><span className="burnout-topbar-date">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}</span><span className="burnout-avatar burnout-avatar--small">{initials}</span></div></header>
         <div className="burnout-content">
           <div className="burnout-page-heading"><div><span className="burnout-eyebrow"><Activity size={12} /> CONNECTED STUDY DATA</span><h1>Burnout, in balance.</h1><p>A transparent frontend estimate from saved study sessions and deadlines.</p></div></div>
-          {data.errors.length > 0 && <p className="burnout-panel-subtitle" role="status">Some connected data could not be loaded: {data.errors.join(' ')}</p>}
-          {!hasEstimateInputs ? <section className="burnout-panel" role="status"><span className="burnout-overline">CONNECTED DATA</span><h2>Estimate unavailable</h2><p className="burnout-panel-subtitle">{data.sessions && data.deadlines ? 'There are no saved sessions or deadlines to assess yet.' : 'Saved session and deadline data is unavailable, so no estimate is shown.'}</p></section> : <>
+          {data.errors.length > 0 && <p className="burnout-panel-subtitle" role="status">Some connected data could not be loaded; this estimate uses only the records that were available.</p>}
+          {!hasEstimateInputs ? <section className="burnout-panel" role="status"><span className="burnout-overline">CONNECTED DATA</span><h2>Estimate unavailable</h2><p className="burnout-panel-subtitle">{data.sessions && data.deadlines ? 'There are no saved sessions or deadlines to assess yet.' : 'Saved study data is unavailable, so no connected estimate is shown.'}</p></section> : <>
             <section className="burnout-hero-grid" aria-label="Frontend burnout estimate">
               <article className="burnout-panel burnout-score-panel"><div className="burnout-panel-heading"><div><span className="burnout-overline">FRONTEND BURNOUT ESTIMATE</span><h2>Current planning signal</h2></div><span className="burnout-info-mark" title="A deterministic frontend heuristic, not an ML prediction"><CircleHelp size={15} /></span></div><RiskGauge value={score} status={riskStatus} contextLabel="Heuristic from saved schedule data" /><div className="burnout-score-foot"><span><Activity size={14} /> {factors.length} contributing factors</span><small>Based on available records only</small></div></article>
               <div className="burnout-signal-grid">
                 <article className="burnout-panel burnout-signal-card burnout-signal-card--intensity"><span className="burnout-signal-icon"><Clock3 size={16} /></span><span className="burnout-overline">UPCOMING SCHEDULE</span><strong><CountUp value={upcomingHours} decimals={1} /> <small>hrs / 7 days</small></strong><span className="burnout-signal-note">{data.sessions ? `${upcomingSessions.length} saved sessions` : 'Unavailable'}</span></article>
                 <article className="burnout-panel burnout-signal-card burnout-signal-card--missed"><span className="burnout-signal-icon"><CalendarDays size={16} /></span><span className="burnout-overline">MISSED SESSIONS</span><strong><CountUp value={missedSessions} /> <small>last 7 days</small></strong><span className="burnout-signal-note">{data.sessions ? `${recentSessions.length} saved sessions` : 'Unavailable'}</span></article>
-                <article className="burnout-panel burnout-signal-card burnout-signal-card--recovery"><span className="burnout-signal-icon"><Moon size={16} /></span><span className="burnout-overline">LIFETIME FOCUS</span><strong>{data.progress ? <><CountUp value={data.progress.focusedHours} decimals={1} /> <small>hrs</small></> : '—'}</strong><span className="burnout-signal-note">{data.progress ? 'Backend lifetime total' : 'Not provided'}</span></article>
+                <article className="burnout-panel burnout-signal-card burnout-signal-card--recovery"><span className="burnout-signal-icon"><Moon size={16} /></span><span className="burnout-overline">LIFETIME FOCUS</span><strong>{data.progress ? <><CountUp value={data.progress.focusedHours} decimals={1} /> <small>hrs</small></> : 'No saved total'}</strong><span className="burnout-signal-note">{data.progress ? 'Saved account activity' : 'Focus history is not available yet'}</span></article>
               </div>
             </section>
             <section className="burnout-panel burnout-behavior"><div className="burnout-section-head"><div><span className="burnout-overline">CURRENTLY AVAILABLE SIGNALS</span><h2>Behavioral Overview</h2></div><span className="burnout-muted-label">LIVE SAVED DATA</span></div><div className="burnout-behavior-grid">{[
@@ -112,12 +113,12 @@ function ConnectedBurnout({ data }: { data: ConnectedBurnoutData }) {
               { label: 'Overdue deadlines', value: overdueDeadlines, suffix: '', note: 'saved academic deadlines', tone: 'amber' },
             ].map((stat) => <article className={`burnout-behavior-stat tone-${stat.tone}`} key={stat.label}><span>{stat.label}</span><strong><CountUp value={stat.value} decimals={stat.suffix === 'hrs' ? 1 : 0} /><small>{stat.suffix}</small></strong><em>{stat.note}</em></article>)}</div></section>
             <section className="burnout-analysis-grid">
-              <article className="burnout-panel burnout-trend-panel"><div className="burnout-section-head"><div><span className="burnout-overline">HISTORICAL DATA</span><h2>Burnout Risk Trend</h2></div></div><p className="burnout-panel-subtitle">Daily risk history is not provided by the backend. This estimate does not fabricate a trend.</p></article>
+              <article className="burnout-panel burnout-trend-panel"><div className="burnout-section-head"><div><span className="burnout-overline">PLANNING SIGNAL</span><h2>Weekly planning trend</h2></div></div><p className="burnout-panel-subtitle">A saved trend will become available as more study activity is recorded.</p></article>
               <article className="burnout-panel burnout-breakdown-panel"><div className="burnout-section-head"><div><span className="burnout-overline">WHAT IS CONTRIBUTING</span><h2>Risk Breakdown</h2></div><span className="burnout-breakdown-total"><CountUp value={score} /> <small>pts</small></span></div><div className="burnout-factor-list">{factors.length ? factors.map((factor) => <div className="burnout-factor" key={factor.label}><div className="burnout-factor-top"><span>{factor.label}<small>{factor.detail}</small></span><b><CountUp value={factor.points} /><small>pts</small></b></div><div className="burnout-factor-track"><i className={`tone-${factor.tone}`} style={{ width: `${Math.min((factor.points / 35) * 100, 100)}%` }} /></div></div>) : <p className="burnout-panel-subtitle">No elevated pressure factors in the available records.</p>}</div><span className="burnout-breakdown-foot">This deterministic heuristic is not an ML/backend prediction or a medical assessment.</span></article>
             </section>
             <section className="burnout-response-grid"><article className="burnout-panel burnout-actions-panel"><div className="burnout-section-head"><div><span className="burnout-overline">SMALL STEPS, GENTLY</span><h2>Recommendations</h2></div></div><div className="burnout-action-list">{recommendations.length ? recommendations.map((recommendation) => <div className="burnout-action" key={recommendation}><button type="button" disabled aria-label="Suggested next step"><ArrowRight size={13} /></button><div><strong>{recommendation}</strong><p>Suggestion based on the current saved study data.</p><span>FRONTEND SUGGESTION</span></div></div>) : <p className="burnout-panel-subtitle">Recommendations are unavailable until study data is saved.</p>}</div></article></section>
           </>}
-          <aside className="burnout-explanation"><span className="burnout-explanation-icon"><CircleHelp size={18} /></span><div><span className="burnout-overline">A LITTLE CONTEXT</span><h2>How to read this estimate</h2><p>The score is a simple frontend heuristic based on missed saved sessions, overdue deadlines, and scheduled study time. Recovery, daily focus history, and historical burnout data are not available.</p><span className="burnout-disclaimer">Not a backend/ML prediction and not a medical assessment.</span></div><span className="burnout-explanation-mark"><Sparkles size={22} /></span></aside>
+          <aside className="burnout-explanation"><span className="burnout-explanation-icon"><CircleHelp size={18} /></span><div><span className="burnout-overline">A LITTLE CONTEXT</span><h2>How to read this estimate</h2><p>The frontend estimate is calculated from saved missed sessions, overdue deadlines, and upcoming scheduled time. It is not a medical assessment.</p><span className="burnout-disclaimer">Frontend estimate · not an ML prediction.</span></div><span className="burnout-explanation-mark"><Sparkles size={22} /></span></aside>
           <footer className="burnout-footer"><span>ADAPTIVE STUDY ECOSYSTEM</span><span>Progress should leave room to recover.</span></footer>
         </div>
       </main>
@@ -195,21 +196,21 @@ function RiskGauge({ value, status, contextLabel }: {
   );
 }
 
-function RiskTrendChart({ data }: { data: BurnoutTrendPoint[] }) {
+function FocusTrendChart({ data }: { data: BurnoutTrendPoint[] }) {
   const width = 720;
   const left = 48;
   const right = 680;
   const bottom = 204;
-  const points = data.length ? data : [{ day: '—', risk: 0 }];
+  const points = data.length ? data : [{ day: '—', value: 0 }];
   const first = points[0];
   const latest = points[points.length - 1];
   const x = (index: number) => left + ((right - left) * index) / Math.max(points.length - 1, 1);
-  const y = (risk: number) => bottom - risk * 1.55;
-  const linePath = points.map((item, index) => `${index === 0 ? 'M' : 'L'} ${x(index)} ${y(item.risk)}`).join(' ');
+  const y = (value: number) => bottom - value * 1.55;
+  const linePath = points.map((item, index) => `${index === 0 ? 'M' : 'L'} ${x(index)} ${y(item.value)}`).join(' ');
   const areaPath = `${linePath} L ${right} ${bottom + 8} L ${left} ${bottom + 8} Z`;
 
   return (
-    <svg className="burnout-trend-svg" viewBox={`0 0 ${width} 250`} role="img" aria-label={`Burnout risk trend from ${first.risk} on ${first.day} to ${latest.risk} on ${latest.day}`}>
+    <svg className="burnout-trend-svg" viewBox={`0 0 ${width} 250`} role="img" aria-label={`Sample daily focus pace from ${first.value}% on ${first.day} to ${latest.value}% on ${latest.day}`}>
       <defs>
         <linearGradient id="burnout-trend-fill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#72c9c1" stopOpacity=".24" />
@@ -223,10 +224,10 @@ function RiskTrendChart({ data }: { data: BurnoutTrendPoint[] }) {
       <path className="burnout-trend-area" d={areaPath} fill="url(#burnout-trend-fill)" />
       <path className="burnout-trend-line" d={linePath} pathLength={1000} />
       {points.map((item, index) => <g key={`${item.day}-${index}`}>
-        <circle className={`burnout-trend-dot ${index === points.length - 1 ? 'is-current' : ''}`} cx={x(index)} cy={y(item.risk)} r={index === points.length - 1 ? 5 : 3.5} />
+        <circle className={`burnout-trend-dot ${index === points.length - 1 ? 'is-current' : ''}`} cx={x(index)} cy={y(item.value)} r={index === points.length - 1 ? 5 : 3.5} />
         <text className={`burnout-chart-day ${index === points.length - 1 ? 'is-current' : ''}`} x={x(index)} y="235" textAnchor="middle">{item.day}</text>
       </g>)}
-      <text className="burnout-current-value" x={right - 1} y={y(latest.risk) - 14} textAnchor="end">{latest.risk} · TODAY</text>
+      <text className="burnout-current-value" x={right - 1} y={y(latest.value) - 14} textAnchor="end">{latest.value}% · GOAL PACE</text>
     </svg>
   );
 }
@@ -234,6 +235,7 @@ function RiskTrendChart({ data }: { data: BurnoutTrendPoint[] }) {
 export default function BurnoutPage() {
   const [dashboardData, setDashboardData] = useState<BurnoutPageData | null>(null);
   const [connectedData, setConnectedData] = useState<ConnectedBurnoutData | null>(null);
+  const [previewNotice, setPreviewNotice] = useState('');
   const [dataLoadError, setDataLoadError] = useState(false);
   const [completedActions, setCompletedActions] = useState<string[]>([]);
   const [planApplied, setPlanApplied] = useState(false);
@@ -251,13 +253,35 @@ export default function BurnoutPage() {
         const errors = results.flatMap((result) => result.status === 'rejected'
           ? [result.reason instanceof Error ? result.reason.message : 'A connected study data request failed.']
           : []);
-        setConnectedData({
+        const loadedData: ConnectedBurnoutData = {
           profile: results[0].status === 'fulfilled' ? results[0].value : null,
           sessions: results[1].status === 'fulfilled' ? results[1].value : null,
           deadlines: results[2].status === 'fulfilled' ? results[2].value : null,
           progress: results[3].status === 'fulfilled' ? results[3].value : null,
           errors,
-        });
+        };
+        const hasStudyHistory = Boolean(
+          (loadedData.progress && (
+            loadedData.progress.focusedHours > 0
+            || loadedData.progress.completedSessions > 0
+            || (loadedData.progress.missedSessions ?? 0) > 0
+          ))
+          || loadedData.sessions?.some((session) => ['completed', 'missed', 'skipped'].includes(session.status)),
+        );
+        if (hasStudyHistory) {
+          setConnectedData(loadedData);
+          return;
+        }
+        const todayKey = toDayKey(new Date());
+        const overdueDeadlines = loadedData.deadlines?.filter((deadline) => (
+          deadline.status === 'overdue'
+          || (deadline.status !== 'completed' && deadline.dueAt < todayKey)
+        )).length ?? 0;
+        const name = loadedData.profile?.fullName || loadedData.profile?.displayName || '';
+        const preview = createBurnoutPreviewData(name, overdueDeadlines);
+        if (loadedData.profile?.program) preview.student.program = loadedData.profile.program;
+        setDashboardData(preview);
+        setPreviewNotice(errors.length ? 'Connected activity could not be fully loaded. The labeled sample estimate is not saved to your account.' : '');
       });
       return () => { mounted = false; };
     }
@@ -298,12 +322,9 @@ export default function BurnoutPage() {
     return () => observer.disconnect();
   }, [dashboardData, connectedData]);
 
-  if (hasApiBaseUrl) {
-    if (!connectedData) return <div className="site-shell burnout-app"><div className="burnout-data-state" role="status">Loading connected study signals…</div></div>;
-    return <ConnectedBurnout data={connectedData} />;
-  }
-
+  if (hasApiBaseUrl && connectedData) return <ConnectedBurnout data={connectedData} />;
   if (!dashboardData) {
+    if (hasApiBaseUrl) return <div className="site-shell burnout-app"><div className="burnout-data-state" role="status">Loading connected study signals…</div></div>;
     return (
       <div className="site-shell burnout-app">
         <div className="burnout-data-state" role={dataLoadError ? 'alert' : 'status'}>
@@ -314,11 +335,9 @@ export default function BurnoutPage() {
   }
 
   const { period, student, risk, signals, behaviorStats, trend, trendSummary, explanationSummary, riskFactors, riskFactorScale, plan, recommendedActions } = dashboardData;
-  const riskChange = risk.score - risk.previousWeekScore;
-  const trendStart = trend[0]?.risk ?? risk.score;
-  const trendEnd = trend[trend.length - 1]?.risk ?? risk.score;
-  const trendChange = trendStart - trendEnd;
-  const hoursAboveUsual = Math.abs(signals.studyIntensity.value - signals.studyIntensity.usualHours);
+  const riskChange = risk.previousWeekScore === null ? null : risk.score - risk.previousWeekScore;
+  const hoursFromGoal = signals.studyIntensity.value - signals.studyIntensity.usualHours;
+  const hoursCompared = Math.abs(hoursFromGoal);
   const factorScale = Math.max(riskFactorScale, ...riskFactors.map((factor) => factor.points), 1);
 
   function toggleAction(id: string) {
@@ -348,6 +367,7 @@ export default function BurnoutPage() {
           </header>
 
           <div className="burnout-content">
+            {previewNotice && <div className="burnout-data-state" role="status">{previewNotice}</div>}
             <div className="burnout-page-heading" data-burnout-reveal>
               <div><span className="burnout-eyebrow"><Activity size={12} /> {period.weekLabel}</span><h1>Burnout, in balance.</h1><p>A thoughtful read on your study rhythm, workload, and recovery.</p></div>
               <span className="burnout-period"><CalendarDays size={14} /> {period.rangeLabel}</span>
@@ -357,18 +377,18 @@ export default function BurnoutPage() {
               <article className="burnout-panel burnout-score-panel">
                 <div className="burnout-panel-heading"><div><span className="burnout-overline">OVERALL BURNOUT RISK</span><h2>Your current signal</h2></div><span className="burnout-info-mark" title="Illustrative study-pattern signal"><CircleHelp size={15} /></span></div>
                 <RiskGauge value={risk.score} status={risk.status} contextLabel={risk.contextLabel} />
-                <div className="burnout-score-foot"><span>{riskChange <= 0 ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />} <CountUp value={Math.abs(riskChange)} /> points</span><small>{riskChange < 0 ? 'lower than last week' : riskChange > 0 ? 'higher than last week' : 'unchanged since last week'}</small><span className="burnout-score-foot-note">{risk.moderateRangeLabel}</span></div>
+                <div className="burnout-score-foot">{riskChange === null ? <span>Calculated from shared sample activity</span> : <><span>{riskChange <= 0 ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />} <CountUp value={Math.abs(riskChange)} /> points</span><small>{riskChange < 0 ? 'lower than last week' : riskChange > 0 ? 'higher than last week' : 'unchanged since last week'}</small></>}<span className="burnout-score-foot-note">{risk.moderateRangeLabel}</span></div>
               </article>
 
               <div className="burnout-signal-grid">
                 <article className="burnout-panel burnout-signal-card burnout-signal-card--intensity">
-                  <span className="burnout-signal-icon"><Clock3 size={16} /></span><span className="burnout-overline">STUDY INTENSITY</span><strong><CountUp value={signals.studyIntensity.value} decimals={1} /> <small>{signals.studyIntensity.unit}</small></strong><span className="burnout-signal-note"><ArrowUpRight size={12} /> {hoursAboveUsual.toFixed(1)} hrs above your usual</span>
+                  <span className="burnout-signal-icon"><Clock3 size={16} /></span><span className="burnout-overline">STUDY INTENSITY</span><strong><CountUp value={signals.studyIntensity.value} decimals={1} /> <small>{signals.studyIntensity.unit}</small></strong><span className="burnout-signal-note">{hoursFromGoal >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {hoursCompared.toFixed(1)} hrs {hoursFromGoal >= 0 ? 'above' : 'below'} weekly goal</span>
                 </article>
                 <article className="burnout-panel burnout-signal-card burnout-signal-card--missed">
                   <span className="burnout-signal-icon"><CalendarDays size={16} /></span><span className="burnout-overline">MISSED SESSIONS</span><strong><CountUp value={signals.missedSessions.value} /> <small>{signals.missedSessions.periodLabel}</small></strong><span className="burnout-signal-note">Of {signals.missedSessions.planned} planned sessions</span>
                 </article>
                 <article className="burnout-panel burnout-signal-card burnout-signal-card--recovery">
-                  <span className="burnout-signal-icon"><Moon size={16} /></span><span className="burnout-overline">RECOVERY</span><strong><CountUp value={signals.recovery.value} /><small>%</small></strong><span className="burnout-signal-note">{signals.recovery.note}</span>
+                  <span className="burnout-signal-icon"><Moon size={16} /></span><span className="burnout-overline">OPEN EVENINGS</span><strong><CountUp value={signals.recovery.value} /><small>{signals.recovery.unit}</small></strong><span className="burnout-signal-note">{signals.recovery.note}</span>
                 </article>
               </div>
             </section>
@@ -384,10 +404,10 @@ export default function BurnoutPage() {
 
             <section className="burnout-analysis-grid" data-burnout-reveal>
               <article className="burnout-panel burnout-trend-panel">
-                <div className="burnout-section-head"><div><span className="burnout-overline">A WEEK IN CONTEXT</span><h2>Burnout Risk Trend</h2></div><span className="burnout-trend-badge"><i /> {trendChange > 0 ? '−' : trendChange < 0 ? '+' : ''}{Math.abs(trendChange)} pts</span></div>
+                <div className="burnout-section-head"><div><span className="burnout-overline">SAMPLE PLANNING DATA</span><h2>Focus pace by day</h2></div><span className="burnout-trend-badge"><i /> WEEKLY GOAL PACE</span></div>
                 <p className="burnout-panel-subtitle">{trendSummary}</p>
-                <RiskTrendChart data={trend} />
-                <div className="burnout-chart-foot"><span><i /> Risk score</span><span>Lower is lighter</span></div>
+                <FocusTrendChart data={trend} />
+                <div className="burnout-chart-foot"><span><i /> Focus vs daily goal</span><span>Sample preview</span></div>
               </article>
 
               <article className="burnout-panel burnout-breakdown-panel">
@@ -432,7 +452,7 @@ export default function BurnoutPage() {
 
             <aside className="burnout-explanation" aria-labelledby="burnout-explanation-title" data-burnout-reveal>
               <span className="burnout-explanation-icon"><CircleHelp size={18} /></span>
-              <div><span className="burnout-overline">A LITTLE CONTEXT</span><h2 id="burnout-explanation-title">Why is your risk {risk.status.toLowerCase()}?</h2><p>{explanationSummary.replace('{missedSessions}', String(signals.missedSessions.value))}</p><span className="burnout-disclaimer">This is a demo planning signal, not a medical assessment.</span></div>
+              <div><span className="burnout-overline">A LITTLE CONTEXT</span><h2 id="burnout-explanation-title">Why is your risk {risk.status.toLowerCase()}?</h2><p>{explanationSummary}</p><span className="burnout-disclaimer">Frontend estimate · not an ML prediction or medical assessment.</span></div>
               <span className="burnout-explanation-mark"><Sparkles size={22} /></span>
             </aside>
             <footer className="burnout-footer"><span>ADAPTIVE STUDY ECOSYSTEM</span><span>Progress should leave room to recover.</span></footer>

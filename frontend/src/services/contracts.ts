@@ -65,12 +65,18 @@ export interface StudentSubject {
   missedSessions: number;
 }
 
+export interface StudentProfileCreate {
+  fullName: string;
+  subjects: Array<Pick<StudentSubject, 'name' | 'previousMarks' | 'examCount'>>;
+}
+
 export type StudentProfileUpdate = Partial<Omit<StudentProfile, 'id' | 'preferences'>> & {
   preferences?: Partial<StudentProfile['preferences']>;
 };
 
 export interface StudentProfileService {
   getProfile(): Promise<StudentProfile>;
+  createProfile(profile: StudentProfileCreate): Promise<StudentProfile>;
   updateProfile(update: StudentProfileUpdate): Promise<StudentProfile>;
   saveAvailability(profile: Pick<StudentProfile, 'preferences'>): Promise<void>;
 }

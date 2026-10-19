@@ -7,6 +7,7 @@ import type {
   ProgressRange,
   ProgressSummary,
   StudentProfile,
+  StudentProfileCreate,
   StudentSubject,
   StudentProfileUpdate,
   StudyPriority,
@@ -83,6 +84,17 @@ type BackendPriority = {
   previous_marks?: number;
 };
 
+export class BackendRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'BackendRequestError';
+  }
+}
+
+export function isProfileMissingError(error: unknown): boolean {
+  return error instanceof BackendRequestError && error.status === 404;
+}
+
 function configurationError(message: string): Error {
   return new Error(message);
 }
@@ -140,7 +152,7 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the HTTP status message when an error response is not JSON.
     }
-    throw new Error(message);
+    throw new BackendRequestError(message, response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -233,11 +245,11 @@ function toProfile(dto: BackendProfile, email = ''): StudentProfile {
   };
 }
 
-function profilePayload(dto: BackendProfile, name: string): Record<string, unknown> {
+function profilePayload(dto: BackendProfile, name: string, subjects = dto.subjects): Record<string, unknown> {
   return {
     student_id: dto.student_id,
     student_name: name,
-    subjects: dto.subjects.map((subject) => ({
+    subjects: subjects.map((subject) => ({
       subject_id: subject.subject_id,
       subject_name: subject.subject_name,
       previous_marks: subject.previous_marks,
@@ -367,15 +379,59 @@ export const backendServices: FrontendServices = {
       cachedProfile = profile;
       return toProfile(profile, identity.email);
     },
+    async createProfile(input: StudentProfileCreate) {
+      const identity = await studentIdentity();
+      const subjects: BackendSubject[] = input.subjects.map((subject, index) => ({
+        subject_id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? `subject-${crypto.randomUUID()}`
+          : `subject-${Date.now()}-${index}`,
+        subject_name: subject.name.trim(),
+        previous_marks: subject.previousMarks,
+        exam_count: subject.examCount,
+        completed_sessions_count: 0,
+        missed_sessions_count: 0,
+      }));
+      const response = await apiRequest<BackendProfile>('/api/v1/students', {
+        method: 'POST',
+        body: JSON.stringify(profilePayload({
+          student_id: identity.id,
+          student_name: input.fullName.trim(),
+          subjects,
+        }, input.fullName.trim())),
+      });
+      cachedProfile = response;
+      return toProfile(response, identity.email);
+    },
     async updateProfile(update: StudentProfileUpdate) {
       const id = await studentId();
       const current = cachedProfile ?? await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`);
       const name = update.fullName ?? update.displayName ?? current.student_name;
+      const subjects = update.subjects?.map((subject): BackendSubject => {
+        const previous = current.subjects.find((item) => item.subject_id === subject.id);
+        return {
+          subject_id: subject.id,
+          subject_name: subject.name.trim(),
+          previous_marks: subject.previousMarks,
+          exam_count: subject.examCount,
+          completed_sessions_count: subject.completedSessions,
+          missed_sessions_count: subject.missedSessions,
+          deadlines: previous?.deadlines,
+        };
+      }) ?? current.subjects;
       const response = await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        body: JSON.stringify(profilePayload(current, name)),
+        body: JSON.stringify(profilePayload(current, name, subjects)),
       });
-      cachedProfile = { ...current, ...response, student_name: name };
+      const deadlinesBySubject = new Map(current.subjects.map((subject) => [subject.subject_id, subject.deadlines]));
+      cachedProfile = {
+        ...current,
+        ...response,
+        student_name: response.student_name || name,
+        subjects: response.subjects.map((subject) => ({
+          ...subject,
+          deadlines: deadlinesBySubject.get(subject.subject_id),
+        })),
+      };
       return toProfile(cachedProfile);
     },
     async saveAvailability(profile) {

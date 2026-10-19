@@ -14,6 +14,7 @@ export type {
   SignInInput,
   SignUpInput,
   StudentProfile,
+  StudentProfileCreate,
   StudentProfileService,
   StudentProfileUpdate,
   StudyPriority,
@@ -25,6 +26,7 @@ import { backendServices, hasApiBaseUrl } from './backendServices';
 import { hasSupabaseAuthConfig } from './supabase';
 
 export { mockServices };
+export { isProfileMissingError } from './backendServices';
 
 /** Keep the local demo implementation available when the API URL is not configured. */
 export const services = hasApiBaseUrl

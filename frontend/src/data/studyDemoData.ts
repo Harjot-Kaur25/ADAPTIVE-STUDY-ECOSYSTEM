@@ -33,26 +33,64 @@ export interface Goal {
   subject?: string;
 }
 
-/** Existing frontend demo schedule, extracted without changing its content. */
+/** Shared week preview used by the Schedule, Overview, and Progress views. */
 export const schedules: Record<string, StudyTask[]> = {
-  MON: [{ id: 'seed-mon-0900-cellular', time: '09:00', title: 'Cellular respiration', subject: 'Biology', kind: 'FOCUS', length: '35 min' }, { id: 'seed-mon-1115-problem', time: '11:15', title: 'Problem set 04', subject: 'Calculus', kind: 'PRACTICE', length: '45 min' }, { id: 'seed-mon-1400-neural', time: '14:00', title: 'Neural pathways', subject: 'Psychology', kind: 'REVIEW', length: '25 min' }],
-  TUE: [{ id: 'seed-tue-0930-data', time: '09:30', title: 'Data structures', subject: 'Computer Science', kind: 'FOCUS', length: '40 min' }, { id: 'seed-tue-1100-cellular', time: '11:00', title: 'Cellular respiration', subject: 'Biology', kind: 'PRACTICE', length: '35 min' }, { id: 'seed-tue-1430-integration', time: '14:30', title: 'Calculus: integration', subject: 'Calculus', kind: 'REVIEW', length: '25 min' }],
-  WED: [{ id: 'seed-wed-1000-sorting', time: '10:00', title: 'Algorithms: sorting', subject: 'Computer Science', kind: 'FOCUS', length: '45 min' }, { id: 'seed-wed-1315-psychology', time: '13:15', title: 'Psychology lecture notes', subject: 'Psychology', kind: 'REVIEW', length: '30 min' }],
-  THU: [{ id: 'seed-thu-0900-calculus', time: '09:00', title: 'Calculus problem set', subject: 'Calculus', kind: 'PRACTICE', length: '45 min' }, { id: 'seed-thu-1100-cells', time: '11:00', title: 'Cell systems', subject: 'Biology', kind: 'FOCUS', length: '35 min' }],
-  FRI: [{ id: 'seed-fri-1030-recall', time: '10:30', title: 'Weekly recall', subject: 'All subjects', kind: 'REVIEW', length: '30 min' }],
-  SAT: [{ id: 'seed-sat-1100-open', time: '11:00', title: 'Open study block', subject: 'Choose a subject', kind: 'FLEXIBLE', length: '45 min' }],
-  SUN: [{ id: 'seed-sun-1600-plan', time: '16:00', title: 'Plan the week ahead', subject: 'Weekly review', kind: 'PLANNING', length: '20 min' }],
+  MON: [
+    { id: 'demo-schedule-mon-math', time: '09:00', title: 'Calculus & Integration Practice', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', status: 'completed', priority: 'High' },
+    { id: 'demo-schedule-mon-networks', time: '14:00', title: 'Routing Protocols', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', status: 'planned', priority: 'Medium' },
+  ],
+  TUE: [
+    { id: 'demo-schedule-tue-dbms', time: '10:00', title: 'SQL Queries & Normalization', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', status: 'planned', priority: 'High' },
+    { id: 'demo-schedule-tue-embedded', time: '16:00', title: 'Microcontroller Fundamentals', subject: 'Embedded Systems', kind: 'FOCUS', length: '45 min', status: 'planned', priority: 'Medium' },
+  ],
+  WED: [
+    { id: 'demo-schedule-wed-math', time: '09:00', title: 'Differential Equations Practice', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', status: 'planned', priority: 'High' },
+    { id: 'demo-schedule-wed-networks', time: '15:00', title: 'Transport Layer & TCP', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', status: 'planned', priority: 'Medium' },
+  ],
+  THU: [
+    { id: 'demo-schedule-thu-dbms', time: '10:00', title: 'Transactions & Indexing', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', status: 'planned', priority: 'High' },
+    { id: 'demo-schedule-thu-embedded', time: '17:00', title: 'GPIO & Sensor Interfaces', subject: 'Embedded Systems', kind: 'FOCUS', length: '45 min', status: 'planned', priority: 'Medium' },
+  ],
+  FRI: [
+    { id: 'demo-schedule-fri-math', time: '09:00', title: 'Revision & Problem Solving', subject: 'Mathematics', kind: 'FOCUS', length: '60 min', status: 'planned', priority: 'High' },
+    { id: 'demo-schedule-fri-networks', time: '14:00', title: 'Network Security Basics', subject: 'Computer Networks', kind: 'FOCUS', length: '45 min', status: 'planned', priority: 'Medium' },
+  ],
+  SAT: [
+    { id: 'demo-schedule-sat-dbms', time: '10:00', title: 'Practice Questions', subject: 'Database Management Systems', kind: 'FOCUS', length: '60 min', status: 'planned', priority: 'Medium' },
+  ],
+  SUN: [
+    { id: 'demo-schedule-sun-review', time: '11:00', title: 'Review completed study topics', subject: 'Weekly Review', kind: 'REVIEW', length: '45 min', status: 'planned', priority: 'Low' },
+  ],
 };
 
+export const studyPreviewProgress = {
+  focusedHours: 7.1,
+  completedSessions: 10,
+  missedSessions: 2,
+  streakDays: 5,
+  weeklyGoalHours: 10,
+  weeklyProgress: Math.round((7.1 / 10) * 100),
+};
+
+export const studyPreviewDaily = [
+  { day: 'Monday', shortDay: 'Mon', hours: 1.1 },
+  { day: 'Tuesday', shortDay: 'Tue', hours: 1.2 },
+  { day: 'Wednesday', shortDay: 'Wed', hours: 0.8 },
+  { day: 'Thursday', shortDay: 'Thu', hours: 1.4 },
+  { day: 'Friday', shortDay: 'Fri', hours: 1.0 },
+  { day: 'Saturday', shortDay: 'Sat', hours: 0.9 },
+  { day: 'Sunday', shortDay: 'Sun', hours: 0.7 },
+];
+
 export const initialSubjects: Subject[] = [
-  { name: 'Computer Science', code: 'CS204', color: 'blue', progress: 72, next: 'Data structures · Today' },
-  { name: 'Biology', code: 'BIO112', color: 'ice', progress: 58, next: 'Cellular respiration · Today' },
-  { name: 'Calculus II', code: 'MAT201', color: 'steel', progress: 81, next: 'Integration · Tomorrow' },
-  { name: 'Psychology', code: 'PSY108', color: 'sky', progress: 46, next: 'Neural pathways · Thu' },
+  { name: 'Mathematics', code: 'MATH', color: 'steel', progress: 81, metricLabel: 'SAMPLE MARKS', next: 'LOW PRIORITY · Sample previous marks: 81%' },
+  { name: 'Computer Networks', code: 'NET', color: 'blue', progress: 72, metricLabel: 'SAMPLE MARKS', next: 'MEDIUM PRIORITY · Sample previous marks: 72%' },
+  { name: 'Database Management Systems', code: 'DBMS', color: 'ice', progress: 58, metricLabel: 'SAMPLE MARKS', next: 'HIGH PRIORITY · Sample previous marks: 58%' },
+  { name: 'Embedded Systems', code: 'EMB', color: 'sky', progress: 46, metricLabel: 'SAMPLE MARKS', next: 'HIGH PRIORITY · Sample previous marks: 46%' },
 ];
 
 export const initialGoals: Goal[] = [
-  { id: 'goal-focus', title: 'Complete 3 focused sessions', detail: 'Build momentum with one session at a time.', category: 'STUDY', target: '3 SESSIONS' },
-  { id: 'goal-biology', title: 'Review Biology before Friday', detail: 'Cellular respiration · 20 minutes.', category: 'COURSEWORK', target: 'THU, OCT 24' },
-  { id: 'goal-rest', title: 'Protect one evening to rest', detail: 'A little open space belongs in the plan, too.', category: 'WELLBEING', target: 'FRI EVENING' },
+  { id: 'goal-focus', title: 'Complete a Mathematics practice block', detail: 'Calculus & Integration Practice · 60 minutes.', category: 'STUDY', target: 'MON · 1 BLOCK' },
+  { id: 'goal-networks', title: 'Review Computer Networks routing', detail: 'Routing Protocols · 45 minutes.', category: 'COURSEWORK', target: 'MON · 2 PM' },
+  { id: 'goal-review', title: 'Review this week’s study topics', detail: 'Use the weekly review block to revisit completed work.', category: 'STUDY', target: 'SUN · 11 AM' },
 ];

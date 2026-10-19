@@ -1,8 +1,45 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, Plus, Trash2, UserRound } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Brand from '../components/Brand';
-import { isAuthEnabled, services } from '../services';
+import { isAuthEnabled, isBackendEnabled, isProfileMissingError, services, type StudentProfileCreate } from '../services';
+import './AuthPage.css';
+
+type SubjectDraft = { name: string; previousMarks: string; examCount: string };
+type PendingProfileDraft = { email: string; profile: StudentProfileCreate };
+
+const pendingProfileKey = 'adaptive-study-pending-profile';
+const emptySubjectDraft = (): SubjectDraft => ({ name: '', previousMarks: '', examCount: '' });
+
+function storePendingProfile(email: string, profile: StudentProfileCreate) {
+  try {
+    window.localStorage.setItem(pendingProfileKey, JSON.stringify({ email: email.toLowerCase(), profile }));
+  } catch {
+    throw new Error('Your study profile could not be saved temporarily in this browser. Check browser storage and try again.');
+  }
+}
+
+function readPendingProfile(): PendingProfileDraft | null {
+  const stored = window.localStorage.getItem(pendingProfileKey);
+  if (!stored) return null;
+  try {
+    const draft = JSON.parse(stored) as PendingProfileDraft;
+    if (typeof draft.email !== 'string' || typeof draft.profile?.fullName !== 'string' || !Array.isArray(draft.profile.subjects)) {
+      throw new Error('The saved subject setup is incomplete.');
+    }
+    return draft;
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'The saved subject setup could not be read.');
+  }
+}
+
+function clearPendingProfile() {
+  try {
+    window.localStorage.removeItem(pendingProfileKey);
+  } catch {
+    throw new Error('The profile was saved, but its temporary browser draft could not be cleared.');
+  }
+}
 
 export default function AuthPage() {
   const { pathname } = useLocation();
@@ -14,6 +51,7 @@ export default function AuthPage() {
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subjectDrafts, setSubjectDrafts] = useState<SubjectDraft[]>([emptySubjectDraft()]);
   const navigate = useNavigate();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -25,6 +63,7 @@ export default function AuthPage() {
     const password = String(data.get('password') ?? '');
     const confirmPassword = String(data.get('confirmPassword') ?? '');
     const nextErrors: Record<string, string> = {};
+    let profileInput: StudentProfileCreate | null = null;
 
     if (isSignup && !name) nextErrors.name = 'Enter your name.';
     if (!email) nextErrors.email = 'Enter your email address.';
@@ -34,6 +73,29 @@ export default function AuthPage() {
     if (isSignup) {
       if (!confirmPassword) nextErrors.confirmPassword = 'Confirm your password.';
       else if (password !== confirmPassword) nextErrors.confirmPassword = 'Passwords do not match.';
+      if (subjectDrafts.length === 0) nextErrors.subjects = 'Add at least one subject.';
+      if (subjectDrafts.length > 50) nextErrors.subjects = 'Add no more than 50 subjects.';
+      const seenNames = new Set<string>();
+      const subjects = subjectDrafts.map((subject, index) => {
+        const subjectName = subject.name.trim();
+        const marks = Number(subject.previousMarks);
+        const examCount = Number(subject.examCount);
+        const prefix = `subject-${index}`;
+        if (!subjectName) nextErrors[`${prefix}-name`] = 'Enter a subject name.';
+        else if (subjectName.length > 120) nextErrors[`${prefix}-name`] = 'Use 120 characters or fewer.';
+        else if (seenNames.has(subjectName.toLowerCase())) nextErrors[`${prefix}-name`] = 'Subject names must be unique.';
+        seenNames.add(subjectName.toLowerCase());
+        if (subject.previousMarks.trim() === '' || !Number.isFinite(marks) || marks < 0 || marks > 100) {
+          nextErrors[`${prefix}-marks`] = 'Enter marks from 0 to 100.';
+        }
+        if (subject.examCount.trim() === '' || !Number.isInteger(examCount) || examCount < 1 || examCount > 10) {
+          nextErrors[`${prefix}-exams`] = 'Enter 1 to 10 completed exams.';
+        }
+        return { name: subjectName, previousMarks: marks, examCount };
+      });
+      if (Object.keys(nextErrors).every((key) => !key.startsWith('subject-') && key !== 'subjects')) {
+        profileInput = { fullName: name, subjects };
+      }
     }
 
     setFieldErrors(nextErrors);
@@ -50,21 +112,51 @@ export default function AuthPage() {
       if (isSignup) {
         const session = await services.auth.signUp({ displayName: name, email, password });
         if (!session) {
-          setActionMessage('Check your email to confirm your account, then sign in to continue.');
+          if (!profileInput) return;
+          storePendingProfile(email, profileInput);
+          setActionMessage('Check your email to confirm your account. Then sign in to save your study profile.');
           return;
         }
+        if (!profileInput) return;
+        storePendingProfile(email, profileInput);
+        await services.student.createProfile(profileInput);
+        clearPendingProfile();
         if (isAuthEnabled) {
-          setActionMessage('Your account is ready. Your study profile will load when it has been set up.');
+          setActionMessage(isBackendEnabled
+            ? 'Your account and study profile are ready.'
+            : 'Your account is ready. Study profile details are stored locally because the study API is not connected.');
           navigate('/dashboard');
           return;
         }
         form.reset();
         setKeepSignedIn(false);
-        setActionMessage('Demo sign-up complete locally. Nothing was sent or saved. You can continue to the dashboard.');
+        setSubjectDrafts([emptySubjectDraft()]);
+        setActionMessage('Demo sign-up complete. Your subjects are saved in this browser. Continue to the dashboard.');
         return;
       }
 
       await services.auth.signIn({ email, password, rememberMe: keepSignedIn });
+      const pendingProfile = readPendingProfile();
+      if (pendingProfile?.email === email.toLowerCase()) {
+        if (isBackendEnabled) {
+          try {
+            await services.student.getProfile();
+            clearPendingProfile();
+            setActionMessage('Your saved study profile is already up to date. Opening your study space.');
+            navigate('/dashboard');
+            return;
+          } catch (error) {
+            if (!isProfileMissingError(error)) throw error;
+          }
+        }
+        await services.student.createProfile(pendingProfile.profile);
+        clearPendingProfile();
+        setActionMessage(isBackendEnabled
+          ? 'Your study profile has been saved. Opening your study space.'
+          : 'Your study profile is saved in this browser. Opening your demo study space.');
+        navigate('/dashboard');
+        return;
+      }
       setActionMessage(isAuthEnabled ? 'Signed in. Opening your study space.' : 'Opening your demo study space.');
       navigate('/dashboard');
     } catch (error) {
@@ -115,6 +207,23 @@ export default function AuthPage() {
               <label className="signin-field">EMAIL ADDRESS<div className="signin-input"><Mail size={15} /><input name="email" type="email" placeholder="you@somewhere.com" autoComplete="email" required aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? errorId('email') : undefined} onChange={() => handleFieldChange('email')} /></div>{fieldErrors.email && <p className="signin-recovery-message" id={errorId('email')} role="alert">{fieldErrors.email}</p>}</label>
               <label className="signin-field">PASSWORD<div className="signin-input"><LockKeyhole size={15} /><input name="password" type={showPassword ? 'text' : 'password'} placeholder="Enter your password" autoComplete={isSignup ? 'new-password' : 'current-password'} minLength={8} required aria-invalid={Boolean(fieldErrors.password)} aria-describedby={fieldErrors.password ? errorId('password') : undefined} onChange={() => handleFieldChange('password')} /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>{fieldErrors.password && <p className="signin-recovery-message" id={errorId('password')} role="alert">{fieldErrors.password}</p>}</label>
               {isSignup && <label className="signin-field">CONFIRM PASSWORD<div className="signin-input"><LockKeyhole size={15} /><input name="confirmPassword" type={showPassword ? 'text' : 'password'} placeholder="Re-enter your password" autoComplete="new-password" required aria-invalid={Boolean(fieldErrors.confirmPassword)} aria-describedby={fieldErrors.confirmPassword ? errorId('confirmPassword') : undefined} onChange={() => handleFieldChange('confirmPassword')} /></div>{fieldErrors.confirmPassword && <p className="signin-recovery-message" id={errorId('confirmPassword')} role="alert">{fieldErrors.confirmPassword}</p>}</label>}
+              {isSignup && <section className="signin-subjects" aria-labelledby="signup-subjects-heading">
+                <div><h3 id="signup-subjects-heading">Your subjects</h3><p>Add your current courses and their latest marks. This information is saved with your study profile.</p></div>
+                {subjectDrafts.map((subject, index) => {
+                  const prefix = `subject-${index}`;
+                  return <fieldset className="signin-subject-entry" key={index}>
+                    <legend>Subject {index + 1}</legend>
+                    <label className="signin-field">SUBJECT NAME<div className="signin-input"><input value={subject.name} maxLength={120} placeholder="e.g. Mathematics" aria-label={`Subject ${index + 1} name`} aria-invalid={Boolean(fieldErrors[`${prefix}-name`])} onChange={(event) => setSubjectDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /></div>{fieldErrors[`${prefix}-name`] && <p className="signin-recovery-message" role="alert">{fieldErrors[`${prefix}-name`]}</p>}</label>
+                    <div className="signin-subject-metrics">
+                      <label className="signin-field">PREVIOUS MARKS<div className="signin-input"><input type="number" min="0" max="100" step="0.1" value={subject.previousMarks} placeholder="0–100" aria-label={`Subject ${index + 1} previous marks`} aria-invalid={Boolean(fieldErrors[`${prefix}-marks`])} onChange={(event) => setSubjectDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, previousMarks: event.target.value } : item))} /></div>{fieldErrors[`${prefix}-marks`] && <p className="signin-recovery-message" role="alert">{fieldErrors[`${prefix}-marks`]}</p>}</label>
+                      <label className="signin-field">COMPLETED EXAMS<div className="signin-input"><input type="number" min="1" max="10" step="1" value={subject.examCount} placeholder="1–10" aria-label={`Subject ${index + 1} completed exams`} aria-invalid={Boolean(fieldErrors[`${prefix}-exams`])} onChange={(event) => setSubjectDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, examCount: event.target.value } : item))} /></div>{fieldErrors[`${prefix}-exams`] && <p className="signin-recovery-message" role="alert">{fieldErrors[`${prefix}-exams`]}</p>}</label>
+                    </div>
+                    {subjectDrafts.length > 1 && <button className="signin-subject-remove" type="button" onClick={() => setSubjectDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={13} /> Remove subject</button>}
+                  </fieldset>;
+                })}
+                {fieldErrors.subjects && <p className="signin-recovery-message" role="alert">{fieldErrors.subjects}</p>}
+                <button className="signin-subject-add" type="button" disabled={subjectDrafts.length >= 50} onClick={() => setSubjectDrafts((current) => [...current, emptySubjectDraft()])}><Plus size={14} /> Add another subject</button>
+              </section>}
               {!isSignup && <div className="signin-form-meta"><label><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /> Keep me signed in</label><button type="button" onClick={() => { const email = document.querySelector<HTMLInputElement>('.signin-form input[name="email"]')?.value.trim() ?? ''; if (!email) { setRecoveryMessage('Enter your email address first.'); return; } void services.auth.requestPasswordReset(email).then(() => setRecoveryMessage(isAuthEnabled ? 'Password reset instructions were sent if that account exists.' : 'Password recovery is not connected in this frontend demo.')).catch((error: unknown) => setRecoveryMessage(error instanceof Error ? error.message : 'Password reset could not be requested.')); }}>Forgot password?</button></div>}
               {recoveryMessage && <p className="signin-recovery-message" role="status">{recoveryMessage}</p>}
               {actionMessage && <p className="signin-recovery-message" role={actionError || Object.keys(fieldErrors).length > 0 ? 'alert' : 'status'} aria-live="polite">{actionMessage}</p>}
