@@ -97,10 +97,14 @@ export interface StudyResourceRecommendation {
   subjectName: string;
   topic: string | null;
   scope: 'subject' | 'topic';
+  priorityContext?: string | null;
+  previousMarks?: number;
   resources: Array<{
+    title: string;
     provider: string;
     resourceType: string;
     searchQuery: string;
+    searchUrl: string;
   }>;
 }
 
@@ -154,6 +158,7 @@ export interface ProgressSummary {
   focusedHours: number;
   completedSessions: number;
   missedSessions?: number;
+  totalSessions?: number;
   streakDays: number | null;
   weeklyGoalHours: number | null;
   daily: DailyProgress[];

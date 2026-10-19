@@ -9,7 +9,7 @@ import type { Deadline, ProgressSummary, StudentStudyInput, StudyPlanResults, St
 
 type Range = 'THIS WEEK' | 'LAST 7 DAYS';
 
-const sectionNames: Record<string, DashboardSection> = { overview: 'Overview', schedule: 'Schedule', subjects: 'Subjects', progress: 'Progress', goals: 'Goals' };
+const sectionNames: Record<string, DashboardSection> = { overview: 'Overview', schedule: 'Schedule', subjects: 'Subjects', resources: 'Resources', progress: 'Progress', goals: 'Goals' };
 const week = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const calendarDates = (() => {
   const monday = new Date();
@@ -128,11 +128,9 @@ function prioritySubjects(priorities: StudyPriority[]): Subject[] {
 function PlanResults({
   priorities,
   warnings,
-  recommendations,
 }: {
   priorities: StudyPriority[];
   warnings: UnscheduledWork[];
-  recommendations: StudyResourceRecommendation[];
 }) {
   return <div className="student-plan-results">
     {priorities.length > 0 && <section className="workspace-panel">
@@ -147,16 +145,6 @@ function PlanResults({
         </article>;
       })}</div>
     </section>}
-    <section className="workspace-panel">
-      <span className="panel-eyebrow">LEARNING RESOURCE RECOMMENDATIONS</span>
-      {recommendations.length === 0
-        ? <p className="demo-footnote">The backend has not returned recommendations for these subjects.</p>
-        : recommendations.map((recommendation) => <article className="student-resource-group" key={`${recommendation.subjectId}-${recommendation.topic ?? 'subject'}`}>
-          <h3>{recommendation.subjectName} · {recommendation.scope === 'topic' ? recommendation.topic : 'Subject-level suggestions'}</h3>
-          <ul>{recommendation.resources.map((resource) => <li key={`${resource.provider}-${resource.searchQuery}`}><b>{resource.provider}</b> ({resource.resourceType}): {resource.searchQuery}</li>)}</ul>
-          <small>Search suggestions returned by the backend; individual lessons and URLs are not verified.</small>
-        </article>)}
-    </section>
     {warnings.length > 0 && <section className="workspace-panel student-plan-warning" role="status">
       <span className="panel-eyebrow">WORK THAT COULD NOT FIT</span>
       {warnings.map((warning) => <p key={warning.subjectName}><b>{warning.subjectName}: {warning.remainingMinutes} minutes remain.</b> {warning.reason}</p>)}
@@ -283,13 +271,105 @@ function SubjectActions({ subject, onEdit, onRemove, onView }: { subject: Subjec
 function Subjects({ subjects, onAdd, onEdit, onRemove, onStatus }: { subjects: Subject[]; onAdd: () => void; onEdit: (subject: Subject) => void; onRemove: (subject: Subject) => void; onStatus: (message: string) => void }) {
   return <><div className="section-intro-line"><p>A clear view of the work ahead in each course.</p><button className="subtle-button" type="button" onClick={onAdd}><Plus size={13} /> Add a subject</button></div>{subjects.length === 0 ? <p className="demo-footnote">No subjects are available yet.</p> : <div className="subject-card-grid">{subjects.map((subject, i) => <article className="workspace-panel subject-card" key={subject.code}><div className="subject-card-top"><span className={`subject-indicator ${subject.color}`} /><span>{subject.code}</span><SubjectActions subject={subject} onView={() => onStatus(`${subject.name}: ${subject.metricLabel === 'PREVIOUS MARKS' ? `${subject.progress}% previous marks` : `${subject.progress}% course rhythm`}, ${subject.next}.`)} onEdit={() => onEdit(subject)} onRemove={() => onRemove(subject)} /></div><h3>{subject.name}</h3><p>{subject.metricLabel === 'PREVIOUS MARKS' ? 'Connected subject · Priority model' : 'Current course · Fall term'}</p><div className="subject-card-progress"><div><span>{subject.metricLabel ?? 'COURSE RHYTHM'}</span><b>{subject.progress}%</b></div><span className="subject-bar"><i style={{ width: `${subject.progress}%` }} /></span></div><div className="subject-card-next"><span>{subject.metricLabel === 'PREVIOUS MARKS' ? 'PRIORITY NOTE' : 'NEXT UP'}</span><b>{subject.next}</b></div><span className="subject-card-number">0{i + 1}</span></article>)}</div>}</>;
 }
-function Progress({ range, setRange, backendProgress }: { range: Range; setRange: (range: Range) => void; backendProgress: ProgressSummary | null }) {
+function ProgressChecklist({
+  sessions,
+  updating,
+  onComplete,
+}: {
+  sessions: CustomSession[] | null;
+  updating: Record<string, boolean>;
+  onComplete: (session: CustomSession) => void;
+}) {
+  if (sessions === null) {
+    return <section className="workspace-panel progress-checklist"><p className="demo-footnote">Saved study sessions are available after connecting your study profile.</p></section>;
+  }
+  const eligible = sessions.filter((session) => !['skipped'].includes((session.status ?? '').toLowerCase()));
+  const completed = eligible.filter((session) => session.status === 'completed').length;
+  const percent = eligible.length ? Math.round((completed / eligible.length) * 100) : 0;
+  const now = new Date();
+  return <section className="workspace-panel progress-checklist" aria-label="Study session checklist">
+    <div className="panel-heading"><div><span className="panel-eyebrow">YOUR SAVED SCHEDULE</span><h3>Study session checklist</h3></div><span className="block-count">{completed} / {eligible.length} · {percent}%</span></div>
+    <div className="progress-checklist-summary"><span className="goal-progress" role="progressbar" aria-label="Study session completion" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${percent}%` }} /></span><span>{completed} completed out of {eligible.length} eligible sessions</span></div>
+    {sessions.length === 0
+      ? <p className="demo-footnote">No saved study sessions yet. Add availability and generate a schedule to begin.</p>
+      : <div className="progress-session-list">{sessions.map((session) => {
+        const status = (session.status ?? '').toLowerCase();
+        const terminal = ['completed', 'missed', 'skipped'].includes(status);
+        const endAt = session.scheduledDate && session.endTime
+          ? new Date(`${session.scheduledDate}T${session.endTime}:00`)
+          : null;
+        const canComplete = Boolean(endAt && now > endAt);
+        const label = status === 'completed' ? 'Completed' : status === 'missed' ? 'Missed' : status === 'skipped' ? 'Skipped' : 'Pending';
+        return <article className={`progress-session-row progress-session-row--${label.toLowerCase()}`} key={session.id}>
+          <label className="progress-session-check">
+            <input
+              type="checkbox"
+              checked={status === 'completed'}
+              disabled={terminal || !canComplete || Boolean(updating[session.id])}
+              aria-label={`Mark ${session.subject} on ${session.scheduledDate ?? 'scheduled date'} completed`}
+              onChange={() => onComplete(session)}
+            />
+            <span aria-hidden="true"><Check size={12} /></span>
+          </label>
+          <div className="progress-session-main"><b>{session.subject}</b><span>{session.scheduledDate ?? 'Date unavailable'} · {session.time}–{session.endTime ?? '—'}</span></div>
+          <span className="progress-session-duration">{session.length}</span>
+          <span className={`progress-session-status progress-session-status--${label.toLowerCase()}`}>{label}</span>
+        </article>;
+      })}</div>}
+  </section>;
+}
+
+function ResourcesSection({
+  recommendations,
+  loading,
+  error,
+  connected,
+  onRetry,
+}: {
+  recommendations: StudyResourceRecommendation[];
+  loading: boolean;
+  error: string;
+  connected: boolean;
+  onRetry: () => void;
+}) {
+  return <div className="student-resource-page">
+    <div className="section-intro-line"><p>Recommendations are prioritized using your saved marks and current subject-priority predictions.</p>{connected && <button className="subtle-button" type="button" onClick={onRetry}>Refresh recommendations</button>}</div>
+    {!connected && <section className="workspace-panel"><p className="demo-footnote">Personalized resources require a connected, signed-in student profile. This preview does not show fabricated recommendations.</p></section>}
+    {loading && <section className="workspace-panel schedule-note" role="status">Loading recommendations for your weaker subjects…</section>}
+    {error && <section className="workspace-panel student-intake-error-panel" role="alert"><p>{error}</p><button className="subtle-button" type="button" onClick={onRetry}>Try again</button></section>}
+    {connected && !loading && !error && recommendations.length === 0 && <section className="workspace-panel"><p className="demo-footnote">No subject recommendations are available yet. Complete student intake with marks and exam dates, then try again.</p></section>}
+    {recommendations.map((recommendation) => <section className="workspace-panel student-resource-subject" key={`${recommendation.subjectId}-${recommendation.topic ?? 'subject'}`}>
+      <div className="panel-heading"><div><span className="panel-eyebrow">{recommendation.priorityContext ? `${recommendation.priorityContext} PRIORITY` : 'SUBJECT SUGGESTIONS'}{typeof recommendation.previousMarks === 'number' ? ` · ${recommendation.previousMarks}% PREVIOUS MARKS` : ''}</span><h3>{recommendation.subjectName}</h3></div><span className="block-count">{recommendation.topic ? 'TOPIC' : 'SUBJECT'}</span></div>
+      {recommendation.topic && <p className="student-resource-topic">Focus: {recommendation.topic}</p>}
+      <div className="student-resource-links">{recommendation.resources.map((resource) => <article key={`${resource.provider}-${resource.searchQuery}`}>
+        <span className="panel-eyebrow">{resource.provider} · {resource.resourceType}</span>
+        <h4>{resource.title}</h4>
+        <a href={resource.searchUrl} target="_blank" rel="noreferrer">Search {resource.provider} <ArrowUpRight size={13} /></a>
+      </article>)}</div>
+      <small>General provider search links based on your subject and priority. Individual lessons are not retrieved or verified.</small>
+    </section>)}
+  </div>;
+}
+
+function Progress({ range, setRange, backendProgress, sessions, updatingSessions, onComplete }: {
+  range: Range;
+  setRange: (range: Range) => void;
+  backendProgress: ProgressSummary | null;
+  sessions: CustomSession[] | null;
+  updatingSessions: Record<string, boolean>;
+  onComplete: (session: CustomSession) => void;
+}) {
   const demo = range === 'THIS WEEK' ? { hours: '8.4', sessions: '12', streak: '6', bars: [53, 78, 43, 88, 65, 28, 38] } : { hours: '7.1', sessions: '10', streak: '5', bars: [42, 65, 38, 76, 55, 20, 31] };
   const hours = backendProgress ? backendProgress.focusedHours.toFixed(1) : demo.hours;
-  const sessions = backendProgress ? String(backendProgress.completedSessions) : demo.sessions;
-  const streak = backendProgress?.streakDays == null ? backendProgress ? '—' : demo.streak : String(backendProgress.streakDays);
+  const eligibleSessions = sessions?.filter((session) => session.status !== 'skipped') ?? [];
+  const completedSessionCount = sessions === null ? backendProgress?.completedSessions ?? 0 : eligibleSessions.filter((session) => session.status === 'completed').length;
+  const missedSessionCount = sessions === null ? backendProgress?.missedSessions ?? 0 : eligibleSessions.filter((session) => session.status === 'missed').length;
+  const totalSessionCount = sessions === null ? backendProgress?.totalSessions ?? 0 : eligibleSessions.length;
+  const completionPercent = totalSessionCount ? Math.round(completedSessionCount / totalSessionCount * 100) : 0;
+  const sessionCount = backendProgress ? String(completedSessionCount) : demo.sessions;
+  const completionRate = backendProgress ? `${completionPercent}%` : `${Math.round(Number(demo.sessions) / 14 * 100)}%`;
   const rangeLabel = backendProgress ? 'ALL TIME' : range;
-  return <><div className="section-intro-line"><p>A record of showing up. Progress at your own pace.</p>{!backendProgress && <RangeSelector value={range} onChange={setRange} label="Choose progress date range" />}</div><div className="progress-summary"><article className="workspace-panel progress-total"><span className="panel-eyebrow">FOCUSED HOURS · {rangeLabel}</span><b>{hours} <small>hours</small></b><span><ArrowUpRight size={13} /> {backendProgress ? 'Saved completed sessions' : '+14% from last week'}</span></article><article className="workspace-panel progress-total"><span className="panel-eyebrow">SESSIONS COMPLETED</span><b>{sessions} <small>sessions</small></b><span><Check size={13} /> {backendProgress ? `${backendProgress.missedSessions ?? 0} missed` : 'across 4 subjects'}</span></article><article className="workspace-panel progress-total"><span className="panel-eyebrow">CONSISTENCY</span><b>{streak} <small>{backendProgress ? '' : 'day streak'}</small></b><span><Flame size={13} /> {backendProgress ? 'Not reported by backend' : 'A rhythm is forming'}</span></article></div><section className="workspace-panel weekly-chart"><div className="panel-heading"><div><span className="panel-eyebrow">SMALL STEPS ADD UP</span><h3>Time in focus</h3></div><span className="chart-legend"><i /> {rangeLabel}</span></div><div className="focus-chart">{backendProgress ? <p className="demo-footnote">The progress endpoint returns lifetime totals, not daily focus data.</p> : demo.bars.map((height, i) => <div className="chart-day" key={`${i}-${height}`}><span>{(height / 20).toFixed(1)}h</span><i style={{ height: `${height}%` }} /><small>{['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}</small></div>)}</div></section><div className="workspace-panel milestone-card"><span className="milestone-icon"><Target size={17} /></span><div><span className="panel-eyebrow">A MOMENT WORTH NOTICING</span><b>{backendProgress ? `${sessions} completed sessions recorded.` : `You showed up ${streak} days in this range.`}</b><p>{backendProgress ? 'Streak and goal data are not exposed by the backend.' : 'That’s a lovely rhythm. Keep the next step small and steady.'}</p></div><ArrowUpRight size={16} /></div></>;
+  return <><div className="section-intro-line"><p>A record of showing up. Progress at your own pace.</p>{!backendProgress && <RangeSelector value={range} onChange={setRange} label="Choose progress date range" />}</div><div className="progress-summary"><article className="workspace-panel progress-total"><span className="panel-eyebrow">FOCUSED HOURS · {rangeLabel}</span><b>{hours} <small>hours</small></b><span><ArrowUpRight size={13} /> {backendProgress ? 'Saved completed sessions' : '+14% from last week'}</span></article><article className="workspace-panel progress-total"><span className="panel-eyebrow">SESSIONS COMPLETED</span><b>{sessionCount} <small>sessions</small></b><span><Check size={13} /> {backendProgress ? `${missedSessionCount} missed · ${totalSessionCount} eligible` : 'across 4 subjects'}</span></article><article className="workspace-panel progress-total"><span className="panel-eyebrow">COMPLETION RATE</span><b>{completionRate}</b><span><Flame size={13} /> {backendProgress ? 'Saved session records' : 'Sample preview only'}</span></article></div><section className="workspace-panel weekly-chart"><div className="panel-heading"><div><span className="panel-eyebrow">SMALL STEPS ADD UP</span><h3>Time in focus</h3></div><span className="chart-legend"><i /> {rangeLabel}</span></div><div className="focus-chart">{backendProgress ? <p className="demo-footnote">The progress endpoint returns lifetime totals, not daily focus data.</p> : demo.bars.map((height, i) => <div className="chart-day" key={`${i}-${height}`}><span>{(height / 20).toFixed(1)}h</span><i style={{ height: `${height}%` }} /><small>{['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}</small></div>)}</div></section><div className="workspace-panel milestone-card"><span className="milestone-icon"><Target size={17} /></span><div><span className="panel-eyebrow">A MOMENT WORTH NOTICING</span><b>{backendProgress ? `${completedSessionCount} completed sessions recorded.` : 'Your study checklist is below.'}</b><p>{backendProgress ? 'Counts use your saved study-session records.' : 'Sample summary only; checklist data is never sent to a backend.'}</p></div><ArrowUpRight size={16} /></div><ProgressChecklist sessions={sessions} updating={updatingSessions} onComplete={onComplete} /></>;
 }
 function Goals({ goals, checked, onToggle, onAdd, isDeadlineData }: { goals: Goal[]; checked: Record<string, boolean>; onToggle: (goal: Goal) => void; onAdd: () => void; isDeadlineData: boolean }) {
   const complete = goals.filter((goal) => checked[goal.id]).length;
@@ -310,6 +390,10 @@ export default function DashboardPage() {
   const [backendDeadlines, setBackendDeadlines] = useState<Deadline[] | null>(null);
   const [backendPriorities, setBackendPriorities] = useState<StudyPriority[]>([]);
   const [backendResources, setBackendResources] = useState<StudyResourceRecommendation[]>([]);
+  const [resourceLoading, setResourceLoading] = useState(false);
+  const [resourceError, setResourceError] = useState('');
+  const [resourceRefreshCount, setResourceRefreshCount] = useState(0);
+  const [updatingSessions, setUpdatingSessions] = useState<Record<string, boolean>>({});
   const [unscheduledWork, setUnscheduledWork] = useState<UnscheduledWork[]>([]);
   const [prioritiesLoaded, setPrioritiesLoaded] = useState(false);
   const [backendLoading, setBackendLoading] = useState(hasApiBaseUrl);
@@ -343,19 +427,17 @@ export default function DashboardPage() {
           setBackendLoading(false);
           return;
         }
-        const [schedule, progress, deadlines, priorities, recommendations] = await Promise.all([
+        const [schedule, progress, deadlines, priorities] = await Promise.all([
           services.planner.listSchedule(),
           services.progress.getProgress('ALL TIME'),
           services.deadlines.listDeadlines(),
           services.priorities.listPriorities(),
-          services.resources.listRecommendations(),
         ]);
         if (!mounted) return;
         setBackendSessions(schedule);
         setBackendProgress(progress);
         setBackendDeadlines(deadlines);
         setBackendPriorities(priorities);
-        setBackendResources(recommendations);
         setPrioritiesLoaded(true);
         setSubjects(prioritySubjects(priorities));
         setDisplayName(input.studentName.trim().split(/\s+/)[0]);
@@ -373,6 +455,24 @@ export default function DashboardPage() {
     void load();
     return () => { mounted = false; };
   }, [reloadCount]);
+
+  useEffect(() => {
+    if (active !== 'Resources' || !hasApiBaseUrl || !backendReady) return;
+    let mounted = true;
+    setResourceLoading(true);
+    setResourceError('');
+    void services.resources.listRecommendations()
+      .then((recommendations) => {
+        if (mounted) setBackendResources(recommendations);
+      })
+      .catch((error: unknown) => {
+        if (mounted) setResourceError(error instanceof Error ? error.message : 'Learning resources could not be loaded.');
+      })
+      .finally(() => {
+        if (mounted) setResourceLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [active, backendReady, resourceRefreshCount]);
 
   async function submitStudyInput(input: StudentStudyInput): Promise<StudyPlanResults> {
     setBackendLoading(true);
@@ -416,6 +516,11 @@ export default function DashboardPage() {
         setApiError('The backend does not support reopening a completed session.');
         return;
       }
+      const scheduled = backendSessions?.find((session) => session.id === task.id);
+      if (!scheduled?.endTime || !scheduled.scheduledDate || Date.now() <= new Date(`${scheduled.scheduledDate}T${scheduled.endTime}:00`).getTime()) {
+        setApiError('A session can only be completed after its scheduled end time.');
+        return;
+      }
       try {
         await services.sessions.updateStatus(task.id, 'completed');
         setBackendSessions((current) => current?.map((session) => session.id === task.id ? { ...session, status: 'completed' } : session) ?? null);
@@ -429,6 +534,30 @@ export default function DashboardPage() {
     const key = `${day}:${task.id}`;
     setPlanning((current) => ({ ...current, completed: { ...current.completed, [key]: !current.completed[key] } }));
     setStatusMessage(`${task.title} marked ${planning.completed[key] ? 'incomplete' : 'complete'}.`);
+  }
+  async function completeSession(session: CustomSession) {
+    if (!isBackendEnabled || updatingSessions[session.id]) return;
+    if (!session.scheduledDate || !session.endTime || Date.now() <= new Date(`${session.scheduledDate}T${session.endTime}:00`).getTime()) {
+      setApiError('A session can only be completed after its scheduled end time.');
+      return;
+    }
+    setUpdatingSessions((current) => ({ ...current, [session.id]: true }));
+    try {
+      const updated = await services.sessions.updateStatus(session.id, 'completed');
+      if (updated.status !== 'completed') throw new Error('The backend did not confirm the completed status.');
+      setBackendSessions((current) => current?.map((item) => item.id === session.id ? { ...item, status: 'completed' } : item) ?? null);
+      setStatusMessage(`${session.subject} marked Completed.`);
+      setApiError('');
+      try {
+        setBackendProgress(await services.progress.getProgress('ALL TIME'));
+      } catch (error) {
+        setApiError(`Session saved, but its progress summary could not be refreshed: ${error instanceof Error ? error.message : 'Unknown error.'}`);
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'The session status could not be saved.');
+    } finally {
+      setUpdatingSessions((current) => ({ ...current, [session.id]: false }));
+    }
   }
   const updateSession = (session: CustomSession) => setPlanning((current) => ({ ...current, sessions: current.sessions.some((item) => item.id === session.id) ? current.sessions.map((item) => item.id === session.id ? session : item) : [...current.sessions, session] }));
   const addSubject = () => { if (hasApiBaseUrl) { setEditingInput(true); return; } const name = window.prompt('Subject name'); if (!name?.trim()) return; const subject = { name: name.trim(), code: `CUSTOM${subjects.length + 1}`, color: 'blue', progress: 0, next: 'Choose your next step' }; setSubjects((current) => [...current, subject]); setStatusMessage(`${subject.name} added.`); };
@@ -458,11 +587,12 @@ export default function DashboardPage() {
         ? <section className="workspace-panel student-intake-error-panel" role="alert"><h2>A connected study action failed.</h2><p>{apiError}</p><button className="subtle-button" type="button" onClick={() => setApiError('')}>Dismiss</button></section>
         : <div className="workspace-panel schedule-note" role="status">Connected study data loaded from your account. <button type="button" className="subtle-button" onClick={() => setEditingInput(true)}>Edit study inputs</button></div>)}
       <span aria-live="polite" role="status" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}>{statusMessage}</span>
-      {hasApiBaseUrl && <PlanResults priorities={backendPriorities} warnings={unscheduledWork} recommendations={backendResources} />}
+      {hasApiBaseUrl && <PlanResults priorities={backendPriorities} warnings={unscheduledWork} />}
       {active === 'Overview' && <Overview onChange={selectSection} selectedDay={selectedDay} setSelectedDay={setSelectedDay} sessions={hasApiBaseUrl ? [] : planning.sessions} backendSessions={backendSessions} completed={hasApiBaseUrl ? {} : planning.completed} onToggle={toggleTask} range={overviewRange} setRange={setOverviewRange} progress={backendProgress} prioritiesLoaded={prioritiesLoaded} onStatus={setStatusMessage} onAddSession={updateSession} onEditSession={updateSession} onDeleteSession={(session) => setPlanning((current) => ({ ...current, sessions: current.sessions.filter((item) => item.id !== session.id) }))} subjects={subjects} displayName={displayName} connected={hasApiBaseUrl} onEditInputs={() => setEditingInput(true)} />}
       {active === 'Schedule' && <Schedule day={selectedDay} setDay={setSelectedDay} sessions={hasApiBaseUrl ? [] : planning.sessions} backendSessions={backendSessions} completed={hasApiBaseUrl ? {} : planning.completed} onToggle={toggleTask} connected={hasApiBaseUrl} onOpenPlanner={() => { if (hasApiBaseUrl) setEditingInput(true); else { setStatusMessage('Planner opened. Add a block for the selected day.'); selectSection('Overview'); } }} />}
       {active === 'Subjects' && <Subjects subjects={subjects} onAdd={addSubject} onEdit={editSubject} onRemove={removeSubject} onStatus={setStatusMessage} />}
-      {active === 'Progress' && <Progress range={progressRange} setRange={setProgressRange} backendProgress={backendProgress} />}
+      {active === 'Resources' && <ResourcesSection recommendations={backendResources} loading={resourceLoading} error={resourceError} connected={isBackendEnabled} onRetry={() => setResourceRefreshCount((count) => count + 1)} />}
+      {active === 'Progress' && <Progress range={progressRange} setRange={setProgressRange} backendProgress={backendProgress} sessions={hasApiBaseUrl ? backendSessions : null} updatingSessions={updatingSessions} onComplete={completeSession} />}
       {active === 'Goals' && <Goals goals={backendDeadlines === null ? goals : deadlineGoals} checked={checkedGoals} onToggle={(goal) => { setCheckedGoals((current) => ({ ...current, [goal.id]: !current[goal.id] })); setStatusMessage(`${goal.title} ${checkedGoals[goal.id] ? 'unchecked' : 'complete'}.`); }} onAdd={addGoal} isDeadlineData={backendDeadlines !== null} />}
     </>}
   </WorkspaceShell>;

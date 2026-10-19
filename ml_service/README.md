@@ -293,13 +293,16 @@ while naive inputs are interpreted as already-local wall time.
 ### Progress and learning resources
 
 - `GET /api/v1/students/{student_id}/progress` returns completed/missed saved
-  session counts, completed study hours, previous marks, subject summaries,
-  and profile baseline counts.
+  session counts, eligible session totals, completed study hours, previous marks,
+  subject summaries, and profile baseline counts. The schedule read marks
+  uncompleted sessions missed only after their saved end date/time has passed;
+  future and current sessions remain pending.
 - `POST /api/v1/students/{student_id}/subjects/{subject_id}/resources` with
-  optional `{"topic":"quadratic equations"}` returns provider names and search
-  queries and saves the provider/query metadata to
-  `resource_recommendations`. Without a topic, suggestions are subject-level.
-  No unverified URL is fabricated.
+  optional `{"topic":"quadratic equations"}` returns provider names, resource
+  types, titles, search queries, and domain-filtered provider search links, then
+  saves the provider/query metadata to `resource_recommendations`. Without a
+  topic, suggestions are subject-level. These are general search suggestions;
+  individual lessons and URLs are not retrieved or verified.
 - `GET /api/v1/students/{student_id}/subjects/{subject_id}/resources` returns
   the saved recommendation-query history for that student's subject.
 
@@ -343,7 +346,7 @@ upserts/validation, ML API inference, availability, multi-subject priority
 allocation, deadline cutoffs, insufficient time, schedule idempotency,
 completed/missed/accepted/edited/skipped session states, progress, resource
 write/read, regeneration preserving completed sessions, allowlisted CORS, and
-errors (36 local tests passed in this workspace). No live authenticated
+errors (41 local tests passed in this workspace). No live authenticated
 Supabase persistence tests were run. The authenticated Supabase persistence
 path, database migrations, and browser-to-Flask flow still require verification
 in a configured deployment with safe test records.

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from db import DatabaseUnavailable, SupabaseStore, access_token_subject
 from predict import PRIORITY_RANK, predict_subject, validate_exam_date
-from resources import recommend_resources
+from resources import recommend_resources, resource_search_url
 from scheduler import generate_schedule, local_wall_datetime
 
 
@@ -764,7 +764,7 @@ class StudentService:
                     "start_time": session["start_time"],
                     "end_time": session["end_time"],
                     "duration_minutes": session["duration_minutes"],
-                    "status": "scheduled",
+                    "status": "PENDING",
                     "reason": session["reason"],
                 },
                 access_token=token,
@@ -818,12 +818,40 @@ class StudentService:
             ),
         }
 
-    def schedule(self, student_id: str, token: str) -> dict[str, Any]:
+    def schedule(
+        self, student_id: str, token: str, *, now: datetime | None = None
+    ) -> dict[str, Any]:
         all_sessions = self._rows(
             "study_sessions", _subject_id(student_id, "student_id"), token,
             order="session_date.asc,start_time.asc", limit=2000,
         )
-        today = date.today().isoformat()
+        current = local_wall_datetime(now)
+        today = current.date().isoformat()
+        for session in all_sessions:
+            status = str(session.get("status", "")).lower()
+            if status not in {"scheduled", "planned", "pending", "accepted"}:
+                continue
+            try:
+                day = date.fromisoformat(str(session["session_date"])[:10])
+                end_time = datetime.strptime(
+                    str(session["end_time"])[:8], "%H:%M:%S"
+                ).time()
+            except (KeyError, TypeError, ValueError):
+                continue
+            if current <= datetime.combine(day, end_time):
+                continue
+            updated = self.store.patch(
+                "study_sessions",
+                {"status": "missed"},
+                access_token=token,
+                filters={
+                    "session_id": _eq(session["session_id"]),
+                    "student_id": _eq(session["student_id"]),
+                    "status": _eq(session["status"]),
+                },
+            )
+            if updated:
+                session.update(updated[0])
         upcoming = [
             session for session in all_sessions
             if str(session.get("session_date", ""))[:10] >= today
@@ -878,6 +906,7 @@ class StudentService:
             filters={
                 "session_id": _eq(session_id),
                 "student_id": _eq(session["student_id"]),
+                "status": _eq(session["status"]),
             },
         )
         if not updated:
@@ -1043,6 +1072,11 @@ class StudentService:
         total_completed = 0
         total_missed = 0
         total_minutes = 0
+        total_sessions = sum(
+            str(row.get("status", "")).lower()
+            in {"scheduled", "planned", "pending", "accepted", "completed", "missed"}
+            for row in sessions
+        )
         for subject in profile["subjects"]:
             subject_sessions = by_subject.get(str(subject["subject_id"]), [])
             completed = sum(
@@ -1075,6 +1109,7 @@ class StudentService:
             "student_id": student_id,
             "completed_sessions": total_completed,
             "missed_sessions": total_missed,
+            "total_sessions": total_sessions,
             "study_hours": round(total_minutes / 60, 2),
             "subjects": summaries,
             "note": "Session totals reflect saved study_sessions; profile baseline aggregates are reported separately.",
@@ -1121,6 +1156,10 @@ class StudentService:
             if not topic
             else "Topic-specific search queries are provided; individual resources have not been verified."
         )
+        for resource in response["resources"]:
+            resource["title"] = (
+                f"Search {topic or subject['subject_name']} on {resource['provider']}"
+            )
         for resource in response["resources"]:
             self.store.insert(
                 "resource_recommendations",
@@ -1183,5 +1222,17 @@ class StudentService:
             "student_id": student_id,
             "subject_id": subject["subject_id"],
             "subject_name": subject["subject_name"],
-            "recommendations": recommendations,
+            "recommendations": [
+                {
+                    **recommendation,
+                    "title": (
+                        f"Search {recommendation.get('topic') or subject['subject_name']} "
+                        f"on {recommendation['provider']}"
+                    ),
+                    "search_url": resource_search_url(
+                        recommendation["provider"], recommendation["search_query"]
+                    ),
+                }
+                for recommendation in recommendations
+            ],
         }

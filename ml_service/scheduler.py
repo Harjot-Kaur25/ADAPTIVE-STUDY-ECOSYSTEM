@@ -229,7 +229,7 @@ def generate_schedule(
                     "start_time": session_start.strftime("%H:%M:%S"),
                     "end_time": session_end.strftime("%H:%M:%S"),
                     "duration_minutes": session_length,
-                    "status": "scheduled",
+                    "status": "PENDING",
                     "reason": (
                         f"{subject.get('priority', 'MEDIUM')} priority"
                         + (

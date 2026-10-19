@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Activity, ArrowUpRight, BarChart3, BookOpen, CalendarDays, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Settings2, Target } from 'lucide-react';
+import { Activity, ArrowUpRight, BarChart3, BookOpen, CalendarDays, LayoutDashboard, Library, PanelLeftClose, PanelLeftOpen, Settings2, Target } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Brand from './Brand';
 
-export type DashboardSection = 'Overview' | 'Schedule' | 'Subjects' | 'Progress' | 'Goals';
+export type DashboardSection = 'Overview' | 'Schedule' | 'Subjects' | 'Resources' | 'Progress' | 'Goals';
 const sections: { label: DashboardSection; icon: typeof LayoutDashboard }[] = [
   { label: 'Overview', icon: LayoutDashboard },
   { label: 'Schedule', icon: CalendarDays },
   { label: 'Subjects', icon: BookOpen },
+  { label: 'Resources', icon: Library },
   { label: 'Progress', icon: BarChart3 },
   { label: 'Goals', icon: Target },
 ];

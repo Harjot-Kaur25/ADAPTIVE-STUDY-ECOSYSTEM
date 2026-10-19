@@ -621,6 +621,168 @@ textarea.glass-field {
   padding-left: 20px;
 }
 
+.student-resource-page {
+  display: grid;
+  gap: 14px;
+}
+
+.student-resource-subject {
+  padding: 18px;
+}
+
+.student-resource-topic {
+  color: #b5c5d4;
+  font-size: 11px;
+}
+
+.student-resource-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.student-resource-links article {
+  padding: 13px;
+  border: 1px solid rgba(156, 188, 223, .12);
+  background: rgba(8, 19, 31, .34);
+}
+
+.student-resource-links h4 {
+  margin: 8px 0 12px;
+  color: #e5f2ff;
+  font-size: 12px;
+}
+
+.student-resource-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #a9d5f5;
+  font-size: 10px;
+}
+
+.student-resource-links a:hover {
+  color: #fff;
+}
+
+.student-resource-subject > small {
+  color: #9eb2c6;
+  font-size: 9px;
+}
+
+.progress-checklist {
+  margin-top: 14px;
+  padding: 18px;
+}
+
+.progress-checklist-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  color: #aebed0;
+  font-size: 10px;
+}
+
+.progress-checklist-summary .goal-progress {
+  flex: 1;
+}
+
+.progress-session-list {
+  display: grid;
+}
+
+.progress-session-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(156, 188, 223, .12);
+}
+
+.progress-session-check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.progress-session-check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.progress-session-check > span {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid rgba(156, 188, 223, .42);
+  border-radius: 4px;
+  color: transparent;
+}
+
+.progress-session-check input:checked + span {
+  border-color: #9dd4ff;
+  background: #9dd4ff;
+  color: #08111c;
+}
+
+.progress-session-check input:focus-visible + span {
+  outline: 2px solid #9dd4ff;
+  outline-offset: 2px;
+}
+
+.progress-session-check input:disabled + span {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.progress-session-main {
+  display: grid;
+  gap: 5px;
+}
+
+.progress-session-main b {
+  color: #e5f2ff;
+  font-size: 11px;
+}
+
+.progress-session-main > span,
+.progress-session-duration {
+  color: #aebed0;
+  font-size: 9px;
+}
+
+.progress-session-status {
+  min-width: 72px;
+  padding: 5px 8px;
+  border: 1px solid rgba(156, 188, 223, .2);
+  border-radius: 20px;
+  color: #b9c8d8;
+  font-size: 8px;
+  text-align: center;
+}
+
+.progress-session-status--completed {
+  border-color: rgba(109, 204, 153, .35);
+  color: #8de0b0;
+}
+
+.progress-session-status--missed {
+  border-color: rgba(234, 147, 147, .35);
+  color: #f0a5a5;
+}
+
+.progress-session-status--skipped {
+  color: #93a1b1;
+}
+
 .student-plan-warning {
   border-color: rgba(235, 184, 102, .35) !important;
 }
@@ -638,5 +800,18 @@ textarea.glass-field {
 
   .student-intake-remove {
     justify-self: start;
+  }
+
+  .progress-session-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .progress-session-duration {
+    display: none;
+  }
+
+  .progress-session-status {
+    min-width: 62px;
   }
 }

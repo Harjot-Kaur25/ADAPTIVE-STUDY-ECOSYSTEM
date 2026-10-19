@@ -7,6 +7,7 @@ export interface StudyTask {
   length: string;
   custom?: boolean;
   scheduledDate?: string;
+  endTime?: string;
   status?: string;
 }
 

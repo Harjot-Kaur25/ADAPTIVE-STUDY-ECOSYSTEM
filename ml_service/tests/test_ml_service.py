@@ -896,6 +896,13 @@ class BackendTests(unittest.TestCase):
         progress = self.service.progress("student-1", self.token)
         self.assertEqual(progress["completed_sessions"], 1)
         self.assertEqual(progress["study_hours"], 2.0)
+        saved_schedule = self.service.schedule("student-1", self.token, now=end + timedelta(minutes=1))
+        self.assertTrue(
+            any(
+                row["session_id"] == session_id and row["status"] == "completed"
+                for row in saved_schedule["past_sessions"]
+            )
+        )
 
     def test_accept_edit_skip_session_states_persist_and_respect_constraints(self):
         self._save_profile()
@@ -1043,7 +1050,8 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(result["scope"], "topic")
         self.assertTrue(result["saved_to_database"])
         self.assertTrue(result["resources"])
-        self.assertTrue(all("url" not in resource for resource in result["resources"]))
+        self.assertTrue(all(resource["search_url"].startswith("https://www.google.com/search?") for resource in result["resources"]))
+        self.assertTrue(all("quadratic" in resource["title"] for resource in result["resources"]))
         saved = self.store.tables["resource_recommendations"]
         self.assertEqual(len(saved), len(result["resources"]))
         self.assertEqual(saved[0]["topic"], "quadratic equations")
@@ -1052,6 +1060,67 @@ class BackendTests(unittest.TestCase):
         history = self.service.resource_history("student-1", "math-1", self.token)
         self.assertEqual(len(history["recommendations"]), len(result["resources"]))
         self.assertEqual(history["subject_id"], "math-1")
+        self.assertTrue(all("search_url" in item for item in history["recommendations"]))
+
+    def test_schedule_marks_only_expired_pending_sessions_missed(self):
+        now = datetime.combine(date.today(), time(15))
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        today = date.today().isoformat()
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        self.store.tables["study_sessions"] = [
+            {
+                "session_id": 1,
+                "student_id": "student-1",
+                "subject_id": "math-1",
+                "session_date": yesterday,
+                "start_time": "13:00:00",
+                "end_time": "14:00:00",
+                "duration_minutes": 60,
+                "status": "scheduled",
+            },
+            {
+                "session_id": 2,
+                "student_id": "student-1",
+                "subject_id": "math-1",
+                "session_date": today,
+                "start_time": "15:00:00",
+                "end_time": "16:00:00",
+                "duration_minutes": 60,
+                "status": "scheduled",
+            },
+            {
+                "session_id": 3,
+                "student_id": "student-1",
+                "subject_id": "math-1",
+                "session_date": tomorrow,
+                "start_time": "13:00:00",
+                "end_time": "14:00:00",
+                "duration_minutes": 60,
+                "status": "scheduled",
+            },
+            {
+                "session_id": 4,
+                "student_id": "student-1",
+                "subject_id": "math-1",
+                "session_date": yesterday,
+                "start_time": "15:00:00",
+                "end_time": "16:00:00",
+                "duration_minutes": 60,
+                "status": "completed",
+            },
+        ]
+
+        result = self.service.schedule("student-1", self.token, now=now)
+        saved_statuses = {
+            row["session_id"]: row["status"]
+            for row in self.store.tables["study_sessions"]
+        }
+        self.assertEqual(saved_statuses, {1: "missed", 2: "scheduled", 3: "scheduled", 4: "completed"})
+        self.assertEqual(
+            {row["session_id"] for row in result["upcoming_sessions"]},
+            {2, 3},
+        )
+        self.assertIn(1, {row["session_id"] for row in result["past_sessions"]})
 
     def test_cors_headers_are_limited_to_configured_frontend_origins(self):
         with patch.dict("os.environ", {
@@ -1186,6 +1255,38 @@ class BackendTests(unittest.TestCase):
         )
         self.assertEqual(accepted.status_code, 200)
         self.assertEqual(accepted.get_json()["status"], "accepted")
+        saved_session = next(
+            row for row in self.store.tables["study_sessions"]
+            if row["session_id"] == first_session_id
+        )
+        saved_session.update(
+            {
+                "session_date": (date.today() - timedelta(days=1)).isoformat(),
+                "start_time": "13:00:00",
+                "end_time": "14:00:00",
+            }
+        )
+        completed = self.client.patch(
+            f"/api/v1/sessions/{first_session_id}/status",
+            json={"status": "completed"},
+            headers=headers,
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.get_json()["status"], "completed")
+        saved_schedule = self.client.get(
+            "/api/v1/students/student-1/schedule", headers=self.headers
+        )
+        self.assertTrue(
+            any(
+                row["session_id"] == first_session_id and row["status"] == "completed"
+                for row in saved_schedule.get_json()["past_sessions"]
+            )
+        )
+        saved_progress = self.client.get(
+            "/api/v1/students/student-1/progress", headers=self.headers
+        )
+        self.assertEqual(saved_progress.get_json()["completed_sessions"], 1)
+        self.assertGreaterEqual(saved_progress.get_json()["total_sessions"], 1)
         self.assertEqual(
             self.client.get(
                 "/api/v1/students/student-1/schedule", headers=self.headers
@@ -1205,12 +1306,15 @@ class BackendTests(unittest.TestCase):
         )
         self.assertEqual(resources.status_code, 200)
         self.assertEqual(resources.get_json()["scope"], "topic")
+        self.assertTrue(resources.get_json()["resources"][0]["title"])
+        self.assertTrue(resources.get_json()["resources"][0]["search_url"].startswith("https://www.google.com/search?"))
         resource_history = self.client.get(
             "/api/v1/students/student-1/subjects/math-1/resources",
             headers=self.headers,
         )
         self.assertEqual(resource_history.status_code, 200)
         self.assertTrue(resource_history.get_json()["recommendations"])
+        self.assertTrue(resource_history.get_json()["recommendations"][0]["search_url"])
 
     def test_supabase_api_client_uses_user_bearer_not_server_key(self):
         store = SupabaseStore(
@@ -1486,7 +1590,12 @@ class BackendTests(unittest.TestCase):
                 "/api/v1/students/another-student",
                 headers=self.headers,
             )
+            foreign_resources = self.client.get(
+                "/api/v1/students/another-student/subjects/math-1/resources",
+                headers=self.headers,
+            )
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(foreign_resources.status_code, 404)
         self.assertEqual(
             response.get_json()["error"]["message"],
             "Student profile was not found.",

@@ -93,10 +93,14 @@ type BackendResourceResponse = {
   subject_name: string;
   topic: string | null;
   scope: 'subject' | 'topic';
+  priority_context?: string | null;
+  previous_marks?: number;
   resources: Array<{
+    title?: string;
     provider: string;
     resource_type: string;
     search_query: string;
+    search_url?: string;
   }>;
 };
 
@@ -182,12 +186,29 @@ function toResourceRecommendation(
     subjectName: response.subject_name,
     topic: response.topic,
     scope: response.scope,
+    priorityContext: response.priority_context,
+    previousMarks: response.previous_marks,
     resources: response.resources.map((resource) => ({
+      title: resource.title ?? `Search ${response.topic || response.subject_name} on ${resource.provider}`,
       provider: resource.provider,
       resourceType: resource.resource_type,
       searchQuery: resource.search_query,
+      searchUrl: resource.search_url ?? resourceSearchUrl(resource.provider, resource.search_query),
     })),
   };
+}
+
+function resourceSearchUrl(provider: string, query: string): string {
+  const domains: Record<string, string> = {
+    'Khan Academy': 'khanacademy.org',
+    OpenStax: 'openstax.org',
+    'MIT OpenCourseWare': 'ocw.mit.edu',
+    YouTube: 'youtube.com',
+  };
+  const search = new URLSearchParams({
+    q: domains[provider] ? `site:${domains[provider]} ${query}` : query,
+  });
+  return `https://www.google.com/search?${search.toString()}`;
 }
 
 async function accessToken(): Promise<string> {
@@ -315,6 +336,7 @@ function mapSession(dto: BackendSession, subjects: Map<string, string>): CustomS
     length: `${dto.duration_minutes} min`,
     custom: false,
     scheduledDate: dto.session_date.slice(0, 10),
+    endTime: dto.end_time.slice(0, 5),
     status: dto.status.toLowerCase(),
   };
 }
@@ -328,7 +350,7 @@ function mapStudySession(session: CustomSession): StudySession {
     scheduledDay: session.scheduledDate,
     startedAt: session.scheduledDate ? `${session.scheduledDate}T${session.time}:00` : undefined,
     endedAt: session.scheduledDate
-      ? `${session.scheduledDate}T${(() => {
+      ? `${session.scheduledDate}T${session.endTime ?? (() => {
           const [hour, minute] = session.time.split(':').map(Number);
           const totalMinutes = hour * 60 + minute + (Number.parseInt(session.length, 10) || 0);
           return `${String(Math.floor(totalMinutes / 60) % 24).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
@@ -626,7 +648,7 @@ export const backendServices: FrontendServices = {
   progress: {
     async getProgress(_range: ProgressRange): Promise<ProgressSummary> {
       const id = await studentId();
-      const result = await apiRequest<{ completed_sessions: number; missed_sessions: number; study_hours: number }>(
+      const result = await apiRequest<{ completed_sessions: number; missed_sessions: number; total_sessions: number; study_hours: number }>(
         `/api/v1/students/${encodeURIComponent(id)}/progress`,
       );
       return {
@@ -634,6 +656,7 @@ export const backendServices: FrontendServices = {
         focusedHours: result.study_hours,
         completedSessions: result.completed_sessions,
         missedSessions: result.missed_sessions,
+        totalSessions: result.total_sessions,
         streakDays: null,
         weeklyGoalHours: null,
         daily: [],
@@ -682,8 +705,29 @@ export const backendServices: FrontendServices = {
       const id = await studentId();
       const profile = cachedProfile ?? await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`);
       cachedProfile = profile;
-      const histories = await Promise.all(profile.subjects.map((subject) =>
-        apiRequest<{
+      const priorityResponse = await apiRequest<BackendPriorityResponse>(`/api/v1/students/${encodeURIComponent(id)}/priorities`, {
+        method: 'POST',
+        body: '{}',
+      });
+      const priorities = toStudyPriorityResult(priorityResponse);
+      const priorityBySubject = new Map(priorities.map((priority) => [priority.id, priority]));
+      const lowestMarks = Math.min(...profile.subjects.map((subject) => subject.previous_marks));
+      const weakerSubjects = profile.subjects
+        .filter((subject) => {
+          const priority = priorityBySubject.get(subject.subject_id);
+          return priority?.priority === 'HIGH'
+            || priority?.priority === 'MEDIUM'
+            || subject.previous_marks < 70
+            || subject.previous_marks <= lowestMarks + 5;
+        })
+        .sort((left, right) => {
+          const leftRank = priorityBySubject.get(left.subject_id)?.rank ?? Number.MAX_SAFE_INTEGER;
+          const rightRank = priorityBySubject.get(right.subject_id)?.rank ?? Number.MAX_SAFE_INTEGER;
+          return leftRank - rightRank || left.previous_marks - right.previous_marks;
+        })
+        .slice(0, 5);
+      const groups = await Promise.all(weakerSubjects.map(async (subject) => {
+        const history = await apiRequest<{
           subject_id: string;
           subject_name: string;
           recommendations: Array<{
@@ -691,10 +735,16 @@ export const backendServices: FrontendServices = {
             provider: string;
             resource_type: string;
             search_query: string;
+            priority_context?: string | null;
           }>;
-        }>(`/api/v1/students/${encodeURIComponent(id)}/subjects/${encodeURIComponent(subject.subject_id)}/resources`),
-      ));
-      return histories.flatMap((history) => {
+        }>(`/api/v1/students/${encodeURIComponent(id)}/subjects/${encodeURIComponent(subject.subject_id)}/resources`);
+        if (!history.recommendations.length) {
+          const generated = await apiRequest<BackendResourceResponse>(`/api/v1/students/${encodeURIComponent(id)}/subjects/${encodeURIComponent(subject.subject_id)}/resources`, {
+            method: 'POST',
+            body: '{}',
+          });
+          return [toResourceRecommendation(generated)];
+        }
         const grouped = new Map<string, StudyResourceRecommendation>();
         for (const item of history.recommendations) {
           const key = item.topic ?? '';
@@ -703,17 +753,22 @@ export const backendServices: FrontendServices = {
             subjectName: history.subject_name,
             topic: item.topic,
             scope: item.topic ? 'topic' as const : 'subject' as const,
+            priorityContext: item.priority_context ?? priorityBySubject.get(history.subject_id)?.priority,
+            previousMarks: subject.previous_marks,
             resources: [],
           };
           current.resources.push({
+            title: `Search ${item.topic || history.subject_name} on ${item.provider}`,
             provider: item.provider,
             resourceType: item.resource_type,
             searchQuery: item.search_query,
+            searchUrl: resourceSearchUrl(item.provider, item.search_query),
           });
           grouped.set(key, current);
         }
         return [...grouped.values()];
-      });
+      }));
+      return groups.flat();
     },
   },
   burnout: {

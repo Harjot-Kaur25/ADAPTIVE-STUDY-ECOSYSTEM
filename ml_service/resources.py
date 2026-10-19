@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlencode
 
 RESOURCE_PROVIDERS = (
     {
@@ -27,6 +28,19 @@ RESOURCE_PROVIDERS = (
     },
 )
 
+RESOURCE_DOMAINS = {
+    "Khan Academy": "khanacademy.org",
+    "OpenStax": "openstax.org",
+    "MIT OpenCourseWare": "ocw.mit.edu",
+    "YouTube": "youtube.com",
+}
+
+
+def resource_search_url(provider: str, search_query: str) -> str:
+    domain = RESOURCE_DOMAINS.get(provider)
+    query = f"site:{domain} {search_query}" if domain else search_query
+    return f"https://www.google.com/search?{urlencode({'q': query})}"
+
 
 def recommend_resources(
     subject_name: str,
@@ -43,6 +57,10 @@ def recommend_resources(
             {
                 **provider,
                 "search_query": f"{search_topic} study lessons practice",
+                "title": f"Search {search_topic} on {provider['provider']}",
+                "search_url": resource_search_url(
+                    provider["provider"], f"{search_topic} study lessons practice"
+                ),
             }
         )
     return {
