@@ -19,14 +19,14 @@ function makeId(prefix: string): string {
   return `${prefix}-demo-${idCounter}`;
 }
 
-const demoUser: AuthUser = { id: 'demo-student', email: 'alex.morgan@example.edu', displayName: 'Alex Morgan' };
+const demoUser: AuthUser = { id: 'demo-student', email: '', displayName: 'Student' };
 let activeDemoSession: AuthSession | null = null;
 
 const demoProfile: StudentProfile = {
   id: demoUser.id,
-  fullName: 'Alex Morgan',
+  fullName: 'Student',
   email: demoUser.email,
-  displayName: 'Alex',
+  displayName: 'Student',
   timezone: 'America/New_York',
   school: 'Northbridge University',
   program: 'Computer Science',

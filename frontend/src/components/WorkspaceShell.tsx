@@ -13,7 +13,7 @@ const sections: { label: DashboardSection; icon: typeof LayoutDashboard }[] = [
 ];
 type Props = { active: DashboardSection | 'Settings' | 'Burnout'; onSectionChange: (section: DashboardSection) => void; eyebrow: string; title: string; profileName?: string; profileDetail?: string; children: React.ReactNode };
 
-export default function WorkspaceShell({ active, onSectionChange, eyebrow, title, profileName = 'Alex Morgan', profileDetail = 'Computer Science · Year 2', children }: Props) {
+export default function WorkspaceShell({ active, onSectionChange, eyebrow, title, profileName = 'Student', profileDetail = 'Study profile', children }: Props) {
   const [collapsed, setCollapsed] = useState(() => document.documentElement.dataset.workspaceCollapsed === 'true');
   const initials = profileName.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'ST';
   function toggleSidebar() {
@@ -35,7 +35,7 @@ export default function WorkspaceShell({ active, onSectionChange, eyebrow, title
         </nav>
         {active === 'Settings' && <nav className="settings-side-nav" aria-label="Settings sections"><span>SETTINGS</span><a href="#profile">Profile details</a><a href="#education">Academic details</a><a href="#study-preferences">Study preferences</a><a href="#notifications">Notifications</a><a href="#appearance">Appearance</a><a href="#privacy">Privacy & data</a></nav>}
         <div className="sidebar-spacer" />
-        <div className="sidebar-insight"><span className="sidebar-insight-icon">✳</span><span>YOUR STUDY RHYTHM<b>Steady progress</b></span><span className="sidebar-insight-dot" /></div>
+        <div className="sidebar-insight"><span className="sidebar-insight-icon">✳</span><span>YOUR STUDY RHYTHM<b>One step at a time</b></span><span className="sidebar-insight-dot" /></div>
         <div className="sidebar-profile"><span className="profile-avatar">{initials}</span><span className="profile-name">{profileName}<small>{profileDetail}</small></span><ArrowUpRight size={14} /></div>
       </aside>
       <main className="workspace-main">

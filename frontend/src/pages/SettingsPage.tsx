@@ -37,19 +37,19 @@ const SETTINGS_STORAGE_KEY = 'adaptivestudy.settings.v1';
 
 function createDefaultSettings(): Settings {
   return {
-    fullName: 'Alex Morgan',
-    email: 'alex.morgan@example.edu',
-    displayName: 'Alex',
+    fullName: 'Student',
+    email: '',
+    displayName: 'Student',
     timezone: 'America/New_York',
     school: 'Northbridge University',
     program: 'Computer Science',
     currentYear: 'second',
     term: 'fall',
-    studyBlock: '45',
+    studyBlock: '60',
     preferredSession: '1h',
     breakLength: '10',
-    dailyGoal: '2',
-    focusTime: 'morning',
+    dailyGoal: '3',
+    focusTime: 'evening',
     selectedDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     startTime: '09',
     endTime: '18',
@@ -58,6 +58,28 @@ function createDefaultSettings(): Settings {
     highContrast: false,
     compactDensity: false,
     deepTheme: false,
+  };
+}
+
+function emptyConnectedSettings(settings: Settings): Settings {
+  return {
+    ...settings,
+    fullName: '',
+    email: '',
+    displayName: '',
+    timezone: '',
+    school: '',
+    program: '',
+    currentYear: '',
+    term: '',
+    studyBlock: '60',
+    preferredSession: '1h',
+    breakLength: '10',
+    dailyGoal: '3',
+    focusTime: 'evening',
+    selectedDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    startTime: '09',
+    endTime: '18',
   };
 }
 
@@ -71,6 +93,12 @@ function booleanOrDefault(value: unknown, fallback: boolean) {
 
 function stringOrDefault(value: unknown, fallback: string, allowed?: readonly string[]) {
   return typeof value === 'string' && (!allowed || allowed.includes(value)) ? value : fallback;
+}
+
+function formatPreferenceHour(value: string): string {
+  const hour = Number(value);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return value;
+  return `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
 function loadSettings(): Settings {
@@ -96,7 +124,7 @@ function loadSettings(): Settings {
       program: stringOrDefault(parsed.program, defaults.program),
       currentYear: stringOrDefault(parsed.currentYear, defaults.currentYear, ['first', 'second', 'third', 'fourth', 'other']),
       term: stringOrDefault(parsed.term, defaults.term, ['fall', 'spring', 'summer']),
-      studyBlock: stringOrDefault(parsed.studyBlock, defaults.studyBlock, ['25', '45', '60', '90']),
+      studyBlock: preferredSession === '2h' ? '120' : preferredSession === '2-3h' ? '180' : '60',
       preferredSession: preferredSession === '2h' || preferredSession === '2-3h' ? preferredSession : '1h',
       breakLength: stringOrDefault(parsed.breakLength, defaults.breakLength, ['5', '10', '15', '20']),
       dailyGoal: stringOrDefault(parsed.dailyGoal, defaults.dailyGoal, ['1', '2', '3', '4']),
@@ -130,7 +158,10 @@ function SettingSection({ id, number, title, description, icon: Icon, children }
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [settings, setSettings] = useState<Settings>(() => {
+    const initial = loadSettings();
+    return hasApiBaseUrl ? emptyConnectedSettings(initial) : initial;
+  });
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [profileLoading, setProfileLoading] = useState(hasApiBaseUrl);
@@ -150,18 +181,27 @@ export default function SettingsPage() {
           fullName: profile.fullName,
           email: profile.email || current.email,
           displayName: profile.displayName,
+          dailyGoal: String(profile.preferences.dailyGoalHours),
+          focusTime: profile.preferences.focusTime,
           selectedDays: profile.preferences.availableDays.length
             ? profile.preferences.availableDays.filter((day): day is Day => (days as readonly string[]).includes(day))
             : current.selectedDays,
-          startTime: ['07', '08', '09', '10', '12'].includes(String(profile.preferences.availabilityStartHour).padStart(2, '0'))
+          startTime: Number.isInteger(profile.preferences.availabilityStartHour)
+            && profile.preferences.availabilityStartHour >= 0
+            && profile.preferences.availabilityStartHour <= 23
             ? String(profile.preferences.availabilityStartHour).padStart(2, '0')
             : current.startTime,
-          endTime: ['15', '16', '17', '18', '20'].includes(String(profile.preferences.availabilityEndHour).padStart(2, '0'))
+          endTime: Number.isInteger(profile.preferences.availabilityEndHour)
+            && profile.preferences.availabilityEndHour >= 0
+            && profile.preferences.availabilityEndHour <= 23
             ? String(profile.preferences.availabilityEndHour).padStart(2, '0')
             : current.endTime,
-          studyBlock: String(profile.preferences.studyBlockMinutes <= 60 ? 60 : 90),
+          studyBlock: profile.preferences.preferredSession === '2h'
+            ? '120'
+            : profile.preferences.preferredSession === '2-3h' ? '180' : '60',
           preferredSession: profile.preferences.preferredSession ?? '1h',
-          breakLength: ['5', '10', '15', '20'].includes(String(profile.preferences.breakLengthMinutes))
+          breakLength: Number.isFinite(profile.preferences.breakLengthMinutes)
+            && profile.preferences.breakLengthMinutes > 0
             ? String(profile.preferences.breakLengthMinutes)
             : current.breakLength,
         }));
@@ -253,7 +293,19 @@ export default function SettingsPage() {
   }
 
   function resetSettings() {
-    setSettings(createDefaultSettings());
+    const defaults = hasApiBaseUrl ? emptyConnectedSettings(createDefaultSettings()) : createDefaultSettings();
+    setSettings((current) => hasApiBaseUrl ? {
+      ...defaults,
+      fullName: current.fullName,
+      email: current.email,
+      displayName: current.displayName,
+      preferredSession: current.preferredSession,
+      studyBlock: current.studyBlock,
+      breakLength: current.breakLength,
+      selectedDays: current.selectedDays,
+      startTime: current.startTime,
+      endTime: current.endTime,
+    } : defaults);
     setShowValidation(false);
     try {
       window.localStorage.removeItem(SETTINGS_STORAGE_KEY);
@@ -266,20 +318,21 @@ export default function SettingsPage() {
   const availabilityError = showValidation && settings.selectedDays.length === 0 ? 'Choose at least one availability day.' : null;
   const timeError = showValidation && Number(settings.startTime) >= Number(settings.endTime) ? 'Start time must be before end time.' : null;
 
-  return <WorkspaceShell active="Settings" onSectionChange={onSectionChange} eyebrow="YOUR STUDY SPACE / SETTINGS" title="Settings." profileName={settings.fullName} profileDetail={connectedProfile ? 'Connected study profile' : 'Computer Science · Year 2'}>
-    <div className="settings-intro"><p>Make this space feel like yours. {hasApiBaseUrl ? 'Profile and availability sync with your study account.' : 'Your choices stay in this demo.'}</p><span className="settings-demo-label"><i /> {profileLoading ? 'LOADING PROFILE' : connectedProfile ? 'CONNECTED PROFILE' : hasApiBaseUrl ? 'DEMO DATA · PROFILE UNAVAILABLE' : 'LOCAL DEMO CONTROLS'}</span></div>
-    {profileError && <p className="demo-footnote" role="alert">Showing local settings because the profile could not be loaded: {profileError}</p>}
+  return <WorkspaceShell active="Settings" onSectionChange={onSectionChange} eyebrow="YOUR STUDY SPACE / SETTINGS" title="Settings." profileName={hasApiBaseUrl ? connectedProfile ? settings.fullName : profileLoading ? 'Loading profile…' : 'Profile unavailable' : settings.fullName} profileDetail={hasApiBaseUrl ? connectedProfile ? 'Connected study profile' : profileLoading ? 'Loading profile' : 'Profile unavailable' : 'Computer Science · Year 2'}>
+    <div className="settings-intro"><p>Make this space feel like yours. {hasApiBaseUrl ? 'Profile and availability sync with your study account.' : 'Your choices stay in this demo.'}</p><span className="settings-demo-label"><i /> {profileLoading ? 'LOADING PROFILE' : connectedProfile ? 'CONNECTED PROFILE' : hasApiBaseUrl ? 'PROFILE UNAVAILABLE' : 'LOCAL DEMO CONTROLS'}</span></div>
+    {profileError && <p className="demo-footnote" role="alert">{hasApiBaseUrl ? `Connected profile could not be loaded; demo identity is hidden. ${profileError}` : profileError}</p>}
     <form className="settings-form" onSubmit={save}>
       <SettingSection id="profile" number="01" title="Profile details" description="The basics for your study space." icon={UserRound}>
-        <div className="settings-field-grid"><label className="setting-field">FULL NAME<input type="text" value={settings.fullName} onChange={(event) => updateSettings({ fullName: event.target.value })} required /></label><label className="setting-field">EMAIL ADDRESS<input type="email" value={settings.email} onChange={(event) => updateSettings({ email: event.target.value })} required /></label><label className="setting-field">DISPLAY NAME<input type="text" value={settings.displayName} onChange={(event) => updateSettings({ displayName: event.target.value })} /></label><label className="setting-field">TIME ZONE<select value={settings.timezone} onChange={(event) => updateSettings({ timezone: event.target.value })}><option value="America/New_York">Eastern Time (ET)</option><option value="America/Chicago">Central Time (CT)</option><option value="America/Denver">Mountain Time (MT)</option><option value="America/Los_Angeles">Pacific Time (PT)</option><option value="Europe/London">London (GMT)</option></select></label></div>
+        <div className="settings-field-grid"><label className="setting-field">FULL NAME<input type="text" value={settings.fullName} onChange={(event) => updateSettings({ fullName: event.target.value })} required /></label><label className="setting-field">EMAIL ADDRESS<input type="email" value={settings.email} onChange={(event) => updateSettings({ email: event.target.value })} required /></label><label className="setting-field">DISPLAY NAME<input type="text" value={settings.displayName} onChange={(event) => updateSettings({ displayName: event.target.value })} /></label><label className="setting-field">TIME ZONE<select value={settings.timezone} onChange={(event) => updateSettings({ timezone: event.target.value })}><option value="">Choose a time zone</option><option value="America/New_York">Eastern Time (ET)</option><option value="America/Chicago">Central Time (CT)</option><option value="America/Denver">Mountain Time (MT)</option><option value="America/Los_Angeles">Pacific Time (PT)</option><option value="Europe/London">London (GMT)</option></select></label></div>
       </SettingSection>
       <SettingSection id="education" number="02" title="Academic details" description="Give your study plan enough context to stay useful." icon={Eye}>
-        <div className="settings-field-grid"><label className="setting-field">SCHOOL<input type="text" value={settings.school} onChange={(event) => updateSettings({ school: event.target.value })} /></label><label className="setting-field">PROGRAM OR MAJOR<input type="text" value={settings.program} onChange={(event) => updateSettings({ program: event.target.value })} /></label><label className="setting-field">CURRENT YEAR<select value={settings.currentYear} onChange={(event) => updateSettings({ currentYear: event.target.value })}><option value="first">First year</option><option value="second">Second year</option><option value="third">Third year</option><option value="fourth">Fourth year</option><option value="other">Other</option></select></label><label className="setting-field">TERM<select value={settings.term} onChange={(event) => updateSettings({ term: event.target.value })}><option value="fall">Fall semester</option><option value="spring">Spring semester</option><option value="summer">Summer term</option></select></label></div>
+        <div className="settings-field-grid"><label className="setting-field">SCHOOL<input type="text" value={settings.school} onChange={(event) => updateSettings({ school: event.target.value })} /></label><label className="setting-field">PROGRAM OR MAJOR<input type="text" value={settings.program} onChange={(event) => updateSettings({ program: event.target.value })} /></label><label className="setting-field">CURRENT YEAR<select value={settings.currentYear} onChange={(event) => updateSettings({ currentYear: event.target.value })}><option value="">Choose a year</option><option value="first">First year</option><option value="second">Second year</option><option value="third">Third year</option><option value="fourth">Fourth year</option><option value="other">Other</option></select></label><label className="setting-field">TERM<select value={settings.term} onChange={(event) => updateSettings({ term: event.target.value })}><option value="">Choose a term</option><option value="fall">Fall semester</option><option value="spring">Spring semester</option><option value="summer">Summer term</option></select></label></div>
+        {hasApiBaseUrl && <p className="demo-footnote">Academic details are optional and can be added here.</p>}
       </SettingSection>
-      <SettingSection id="study-preferences" number="03" title="Study preferences" description="Shape study sessions around how you like to work." icon={LockKeyhole}>
-        <div className="settings-field-grid"><label className="setting-field">PREFERRED STUDY BLOCK<select value={settings.studyBlock} onChange={(event) => updateAvailability({ studyBlock: event.target.value, preferredSession: Number(event.target.value) <= 60 ? '1h' : '2h' })}><option value="25">25 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option><option value="90">90 minutes</option></select></label><label className="setting-field">BREAK LENGTH<select value={settings.breakLength} onChange={(event) => updateAvailability({ breakLength: event.target.value })}><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option></select></label><label className="setting-field">DAILY STUDY GOAL<select value={settings.dailyGoal} onChange={(event) => updateSettings({ dailyGoal: event.target.value })}><option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option></select></label><label className="setting-field">BEST FOCUS TIME<select value={settings.focusTime} onChange={(event) => updateSettings({ focusTime: event.target.value })}><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="flexible">It changes day to day</option></select></label></div>
-        <div className="availability-heading"><span>WEEKLY AVAILABILITY</span><small>Choose the days you usually have time to study.</small></div><div className="availability-days" role="group" aria-label="Weekly availability days" aria-describedby={availabilityError ? 'availability-error' : undefined}>{days.map((day) => <button type="button" key={day} className={`availability-day ${settings.selectedDays.includes(day) ? 'is-selected' : ''}`} aria-pressed={settings.selectedDays.includes(day)} onClick={() => { const selected = settings.selectedDays.includes(day); updateSettings({ selectedDays: selected ? settings.selectedDays.filter((item) => item !== day) : [...settings.selectedDays, day] }); setAvailabilityDirty(true); }}>{settings.selectedDays.includes(day) && <Check size={11} />}{day}</button>)}</div>{availabilityError && <small id="availability-error" role="alert">{availabilityError}</small>}
-        <div className="settings-field-grid availability-times"><label className="setting-field">USUAL START TIME<select value={settings.startTime} onChange={(event) => updateAvailability({ startTime: event.target.value })}><option value="07">7:00 AM</option><option value="08">8:00 AM</option><option value="09">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option></select></label><label className="setting-field">USUAL END TIME<select value={settings.endTime} onChange={(event) => updateAvailability({ endTime: event.target.value })}><option value="15">3:00 PM</option><option value="16">4:00 PM</option><option value="17">5:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option></select></label></div>{timeError && <small role="alert">{timeError}</small>}
+      <SettingSection id="study-preferences" number="03" title="Study preferences" description="Saved account preferences take priority; remaining defaults are local choices, not predictions." icon={LockKeyhole}>
+        <div className="settings-field-grid"><label className="setting-field">PREFERRED STUDY BLOCK<select value={settings.preferredSession} onChange={(event) => { const preferredSession = event.target.value as Settings['preferredSession']; updateAvailability({ studyBlock: preferredSession === '2h' ? '120' : preferredSession === '2-3h' ? '180' : '60', preferredSession }); }}><option value="1h">1 hour</option><option value="2h">2 hours</option><option value="2-3h">2–3 hours</option></select></label><label className="setting-field">BREAK LENGTH<select value={settings.breakLength} onChange={(event) => updateAvailability({ breakLength: event.target.value })}>{!['5', '10', '15', '20'].includes(settings.breakLength) && <option value={settings.breakLength}>{settings.breakLength} minutes</option>}<option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="20">20 minutes</option></select></label><label className="setting-field">DAILY STUDY GOAL<select value={settings.dailyGoal} onChange={(event) => updateSettings({ dailyGoal: event.target.value })}>{!['1', '2', '3', '4'].includes(settings.dailyGoal) && <option value={settings.dailyGoal}>{settings.dailyGoal} hours</option>}<option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option></select></label><label className="setting-field">BEST FOCUS TIME<select value={settings.focusTime} onChange={(event) => updateSettings({ focusTime: event.target.value })}><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="flexible">It changes day to day</option></select></label></div>
+        <div className="availability-heading"><span>WEEKLY AVAILABILITY</span><small>Choose the days you usually have time to study.</small></div><div className="availability-days" role="group" aria-label="Weekly availability days" aria-describedby={availabilityError ? 'availability-error' : undefined}>{days.map((day) => <button type="button" key={day} className={`availability-day ${settings.selectedDays.includes(day) ? 'is-selected' : ''}`} aria-pressed={settings.selectedDays.includes(day)} onClick={() => { const selected = settings.selectedDays.includes(day); updateSettings({ selectedDays: selected ? settings.selectedDays.filter((item) => item !== day) : [...settings.selectedDays, day] }); setAvailabilityDirty(true); }}>{settings.selectedDays.includes(day) && <Check size={11} />}{day}</button>)}</div>{hasApiBaseUrl && !profileLoading && connectedProfile && settings.selectedDays.length === 0 && <small>No availability periods are saved to this account yet.</small>}{availabilityError && <small id="availability-error" role="alert">{availabilityError}</small>}
+        <div className="settings-field-grid availability-times"><label className="setting-field">USUAL START TIME<select value={settings.startTime} onChange={(event) => updateAvailability({ startTime: event.target.value })}>{!['07', '08', '09', '10', '12'].includes(settings.startTime) && <option value={settings.startTime}>{formatPreferenceHour(settings.startTime)}</option>}<option value="07">7:00 AM</option><option value="08">8:00 AM</option><option value="09">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option></select></label><label className="setting-field">USUAL END TIME<select value={settings.endTime} onChange={(event) => updateAvailability({ endTime: event.target.value })}>{!['15', '16', '17', '18', '20'].includes(settings.endTime) && <option value={settings.endTime}>{formatPreferenceHour(settings.endTime)}</option>}<option value="15">3:00 PM</option><option value="16">4:00 PM</option><option value="17">5:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option></select></label></div>{timeError && <small role="alert">{timeError}</small>}
       </SettingSection>
       <SettingSection id="notifications" number="04" title="Notifications" description="Choose which nudges help—and which ones can wait." icon={Bell}>
         <Toggle label="Deadline reminders" detail="A heads-up before an assignment is due." checked={settings.preferences.deadlines} onChange={() => togglePreference('deadlines')} /><Toggle label="Adaptive plan changes" detail="Let me know when the day's schedule shifts." checked={settings.preferences.planChanges} onChange={() => togglePreference('planChanges')} /><Toggle label="Weekly study summary" detail="A brief look back at your time and progress." checked={settings.preferences.weeklySummary} onChange={() => togglePreference('weeklySummary')} /><Toggle label="Study streak reminders" detail="A gentle prompt when your study rhythm pauses." checked={settings.preferences.streaks} onChange={() => togglePreference('streaks')} /><Toggle label="Learning tips" detail="Occasional ideas for building a better routine." checked={settings.preferences.studyTips} onChange={() => togglePreference('studyTips')} />
@@ -287,8 +340,8 @@ export default function SettingsPage() {
       <SettingSection id="appearance" number="05" title="Appearance & accessibility" description="Keep the interface comfortable and easy to use." icon={Eye}>
         <div className="settings-field-grid"><label className="setting-field">COLOR THEME<select value={settings.deepTheme ? 'deep' : 'midnight'} onChange={(event) => updateSettings({ deepTheme: event.target.value === 'deep' })}><option value="midnight">Midnight blue</option><option value="deep">Deep midnight</option></select></label><label className="setting-field">DASHBOARD DENSITY<select value={settings.compactDensity ? 'compact' : 'comfortable'} onChange={(event) => updateSettings({ compactDensity: event.target.value === 'compact' })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></div><Toggle label="Reduce motion" detail="Turn off continuous motion effects in this demo." checked={settings.reducedMotion} onChange={() => updateSettings({ reducedMotion: !settings.reducedMotion })} /><Toggle label="High-contrast borders" detail="Make interface boundaries easier to distinguish." checked={settings.highContrast} onChange={() => updateSettings({ highContrast: !settings.highContrast })} />
       </SettingSection>
-      <SettingSection id="privacy" number="06" title="Privacy & data" description="This prototype does not connect to a service; settings remain in this browser." icon={LockKeyhole}>
-        <div className="privacy-notice"><LockKeyhole size={15} /><div><b>Your data stays in this browser.</b><p>Profile details, preferences, study blocks, and progress are stored only in this browser when you save. Nothing is sent to a server.</p></div></div><button type="button" className="privacy-action" onClick={resetSettings}>Reset demo preferences</button>
+      <SettingSection id="privacy" number="06" title="Privacy & data" description={hasApiBaseUrl ? 'Your name and supported availability sync with your study account; other preferences stay in this browser.' : 'Your settings stay in this browser.'} icon={LockKeyhole}>
+        <div className="privacy-notice"><LockKeyhole size={15} /><div><b>{hasApiBaseUrl ? 'Some settings sync with your study account.' : 'Your data stays in this browser.'}</b><p>{hasApiBaseUrl ? 'When the study API is configured, your name and supported availability are sent to your account. Other preferences and appearance choices are stored in this browser.' : 'Your settings are stored in this browser when you save. Nothing is sent to a server.'}</p></div></div><button type="button" className="privacy-action" onClick={resetSettings}>Reset demo preferences</button>
       </SettingSection>
       <div className="settings-save-bar"><span id="settings-feedback" role={feedback?.kind === 'error' ? 'alert' : 'status'} aria-live="polite">{feedback ? <>{feedback.kind === 'success' && <Check size={14} />} {feedback.message}</> : hasApiBaseUrl ? 'Profile data loads from your study account.' : 'Your settings are stored locally in this browser.'}</span><button type="submit" className="save-settings"><Save size={14} /> Save changes</button></div>
     </form>

@@ -8,6 +8,7 @@ export interface StudyTask {
   custom?: boolean;
   scheduledDate?: string;
   status?: string;
+  priority?: 'High' | 'Medium' | 'Low';
 }
 
 export interface CustomSession extends StudyTask {

@@ -38,6 +38,7 @@ export interface StudentProfile {
   fullName: string;
   email: string;
   displayName: string;
+  subjects?: StudentSubject[];
   timezone: string;
   school: string;
   program: string;
@@ -53,6 +54,15 @@ export interface StudentProfile {
     availabilityStartHour: number;
     availabilityEndHour: number;
   };
+}
+
+export interface StudentSubject {
+  id: string;
+  name: string;
+  previousMarks: number;
+  examCount: number;
+  completedSessions: number;
+  missedSessions: number;
 }
 
 export type StudentProfileUpdate = Partial<Omit<StudentProfile, 'id' | 'preferences'>> & {
@@ -78,7 +88,7 @@ export interface StudySession {
   startedAt?: string;
   endedAt?: string;
   durationMinutes: number;
-  status: 'planned' | 'accepted' | 'in-progress' | 'completed' | 'missed' | 'skipped';
+  status: 'scheduled' | 'planned' | 'pending' | 'accepted' | 'in-progress' | 'completed' | 'missed' | 'skipped';
 }
 
 export interface StudySessionService {
@@ -105,6 +115,16 @@ export interface ProgressSummary {
   streakDays: number | null;
   weeklyGoalHours: number | null;
   daily: DailyProgress[];
+  subjects?: SubjectProgress[];
+}
+
+export interface SubjectProgress {
+  subjectId: string;
+  subjectName: string;
+  previousMarks: number;
+  completedSessions: number;
+  missedSessions: number;
+  focusedHours: number;
 }
 
 export interface ProgressService {

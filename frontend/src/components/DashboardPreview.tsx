@@ -33,7 +33,7 @@ export default function DashboardPreview() {
   }[selectedWeek] ?? { date: 'MONDAY, OCTOBER 21', score: '82', gain: '+8 this week', hours: '3.5' };
   return (
     <div className="dashboard-shell" aria-label="Illustrative adaptive study planner preview">
-      <div className="dashboard-topline"><span><i className="live-dot" /> STUDY SPACE / TODAY</span><span>MON, OCT 21 <MoreHorizontal size={16} /></span></div>
+      <div className="dashboard-topline"><span><i className="live-dot" /> SAMPLE PREVIEW · NOT LIVE DATA</span><span>MON, OCT 21 <MoreHorizontal size={16} /></span></div>
       <div className="dashboard-body">
         <aside className="dash-rail"><span className="rail-icon rail-icon--active">A</span><span className="rail-icon">◌</span><span className="rail-icon">⌁</span><span className="rail-icon">▦</span><span className="rail-avatar">JD</span></aside>
         <div className="dash-main">

@@ -10,7 +10,6 @@ import {
   Check,
   CircleHelp,
   Clock3,
-  Gauge,
   LayoutDashboard,
   Moon,
   Settings2,
@@ -19,20 +18,112 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Brand from '../components/Brand';
+import { hasApiBaseUrl, services } from '../services';
+import type { Deadline, ProgressSummary, StudySession, StudentProfile } from '../services/contracts';
 import { burnoutService } from '../services/burnoutService';
 import type { BurnoutPageData, BurnoutTrendPoint } from '../services/burnoutService';
 import './BurnoutPage.css';
 
 const navigation = [
   { label: 'Overview', to: '/dashboard?section=overview', icon: LayoutDashboard },
-  { label: 'Study Planner', to: '/dashboard?section=schedule', icon: CalendarDays },
+  { label: 'Schedule', to: '/dashboard?section=schedule', icon: CalendarDays },
   { label: 'Progress', to: '/dashboard?section=progress', icon: BarChart3 },
-  { label: 'Resources', to: '/dashboard?section=subjects', icon: BookOpen },
+  { label: 'Subjects', to: '/dashboard?section=subjects', icon: BookOpen },
   { label: 'Burnout', to: '/burnout', icon: Activity },
-  { label: 'Analytics', to: '/dashboard?section=progress', icon: Gauge },
   { label: 'Goals', to: '/dashboard?section=goals', icon: Target },
   { label: 'Settings', to: '/settings', icon: Settings2 },
 ] as const;
+
+type ConnectedBurnoutData = {
+  profile: StudentProfile | null;
+  sessions: StudySession[] | null;
+  deadlines: Deadline[] | null;
+  progress: ProgressSummary | null;
+  errors: string[];
+};
+
+function toDayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function ConnectedBurnout({ data }: { data: ConnectedBurnoutData }) {
+  const today = new Date();
+  const todayKey = toDayKey(today);
+  const recentStart = new Date(today);
+  recentStart.setDate(today.getDate() - 6);
+  const recentStartKey = toDayKey(recentStart);
+  const upcomingEnd = new Date(today);
+  upcomingEnd.setDate(today.getDate() + 6);
+  const upcomingEndKey = toDayKey(upcomingEnd);
+  const recentSessions = data.sessions?.filter((session) => Boolean(session.scheduledDay && session.scheduledDay >= recentStartKey && session.scheduledDay <= todayKey)) ?? [];
+  const upcomingSessions = data.sessions?.filter((session) => Boolean(session.scheduledDay && session.scheduledDay >= todayKey && session.scheduledDay <= upcomingEndKey && !['completed', 'missed', 'skipped'].includes(session.status))) ?? [];
+  const missedSessions = recentSessions.filter((session) => session.status === 'missed').length;
+  const upcomingHours = upcomingSessions.reduce((sum, session) => sum + session.durationMinutes, 0) / 60;
+  const overdueDeadlines = data.deadlines?.filter((deadline) => deadline.status === 'overdue' || (deadline.status !== 'completed' && deadline.dueAt < todayKey)).length ?? 0;
+  const hasEstimateInputs = data.sessions !== null && data.deadlines !== null && Boolean(data.sessions.length || data.deadlines.length);
+  const missedPoints = recentSessions.length ? Math.round((missedSessions / recentSessions.length) * 35) : 0;
+  const deadlinePoints = Math.min(overdueDeadlines * 12, 30);
+  const workloadPoints = Math.min(Math.max(Math.round((upcomingHours - 12) * 3), 0), 35);
+  const score = Math.min(missedPoints + deadlinePoints + workloadPoints, 100);
+  const riskStatus = score >= 60 ? 'HIGH' : score >= 30 ? 'MODERATE' : 'LOW';
+  const name = data.profile?.fullName || data.profile?.displayName || 'Connected student';
+  const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'ST';
+  const factors = [
+    { label: 'Missed sessions', detail: `${missedSessions} of ${recentSessions.length} saved sessions in the last 7 days`, points: missedPoints, tone: 'amber' },
+    { label: 'Overdue deadlines', detail: `${overdueDeadlines} saved deadlines overdue`, points: deadlinePoints, tone: 'blue' },
+    { label: 'Upcoming scheduled time', detail: `${upcomingHours.toFixed(1)} scheduled hours in the next 7 days`, points: workloadPoints, tone: 'sky' },
+  ].filter((factor) => factor.points > 0);
+  const recommendations = [
+    ...(missedSessions ? ['Review missed sessions and adjust the next study block.'] : []),
+    ...(overdueDeadlines ? ['Break an overdue deadline into a small next step.'] : []),
+    ...(upcomingHours > 12 ? ['Consider spreading the upcoming study blocks across more days.'] : []),
+  ];
+  if (!recommendations.length && hasEstimateInputs) recommendations.push('No elevated workload signals were found in the saved schedule and deadlines.');
+
+  return <div className="site-shell burnout-app">
+    <div className="burnout-layout">
+      <aside className="burnout-sidebar">
+        <div className="burnout-brand"><Brand /></div>
+        <span className="burnout-nav-caption">YOUR STUDY SPACE</span>
+        <nav className="burnout-nav" aria-label="Study space">
+          {navigation.map(({ label, to, icon: Icon }) => <Link key={label} to={to} aria-current={label === 'Burnout' ? 'page' : undefined} className={`burnout-nav-link ${label === 'Burnout' ? 'is-active' : ''}`}><Icon size={16} strokeWidth={1.65} /><span>{label}</span>{label === 'Burnout' && <i />}</Link>)}
+        </nav>
+        <div className="burnout-sidebar-spacer" />
+        <div className="burnout-sidebar-note"><span className="burnout-note-icon"><Sparkles size={14} /></span><span>YOUR STUDY RHYTHM<b>Make space to reset.</b></span></div>
+        <div className="burnout-user"><span className="burnout-avatar">{initials}</span><span>{name}<small>{data.profile?.program || 'Connected study profile'}</small></span></div>
+      </aside>
+      <main className="burnout-main">
+        <header className="burnout-topbar"><div className="burnout-crumb"><Link to="/">Adaptive Study</Link><span>/</span><b>Burnout</b></div><div className="burnout-topbar-right"><span className="burnout-demo-indicator"><i /> FRONTEND ESTIMATE</span><span className="burnout-topbar-date">{today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}</span><span className="burnout-avatar burnout-avatar--small">{initials}</span></div></header>
+        <div className="burnout-content">
+          <div className="burnout-page-heading"><div><span className="burnout-eyebrow"><Activity size={12} /> CONNECTED STUDY DATA</span><h1>Burnout, in balance.</h1><p>A transparent frontend estimate from saved study sessions and deadlines.</p></div></div>
+          {data.errors.length > 0 && <p className="burnout-panel-subtitle" role="status">Some connected data could not be loaded: {data.errors.join(' ')}</p>}
+          {!hasEstimateInputs ? <section className="burnout-panel" role="status"><span className="burnout-overline">CONNECTED DATA</span><h2>Estimate unavailable</h2><p className="burnout-panel-subtitle">{data.sessions && data.deadlines ? 'There are no saved sessions or deadlines to assess yet.' : 'Saved session and deadline data is unavailable, so no estimate is shown.'}</p></section> : <>
+            <section className="burnout-hero-grid" aria-label="Frontend burnout estimate">
+              <article className="burnout-panel burnout-score-panel"><div className="burnout-panel-heading"><div><span className="burnout-overline">FRONTEND BURNOUT ESTIMATE</span><h2>Current planning signal</h2></div><span className="burnout-info-mark" title="A deterministic frontend heuristic, not an ML prediction"><CircleHelp size={15} /></span></div><RiskGauge value={score} status={riskStatus} contextLabel="Heuristic from saved schedule data" /><div className="burnout-score-foot"><span><Activity size={14} /> {factors.length} contributing factors</span><small>Based on available records only</small></div></article>
+              <div className="burnout-signal-grid">
+                <article className="burnout-panel burnout-signal-card burnout-signal-card--intensity"><span className="burnout-signal-icon"><Clock3 size={16} /></span><span className="burnout-overline">UPCOMING SCHEDULE</span><strong><CountUp value={upcomingHours} decimals={1} /> <small>hrs / 7 days</small></strong><span className="burnout-signal-note">{data.sessions ? `${upcomingSessions.length} saved sessions` : 'Unavailable'}</span></article>
+                <article className="burnout-panel burnout-signal-card burnout-signal-card--missed"><span className="burnout-signal-icon"><CalendarDays size={16} /></span><span className="burnout-overline">MISSED SESSIONS</span><strong><CountUp value={missedSessions} /> <small>last 7 days</small></strong><span className="burnout-signal-note">{data.sessions ? `${recentSessions.length} saved sessions` : 'Unavailable'}</span></article>
+                <article className="burnout-panel burnout-signal-card burnout-signal-card--recovery"><span className="burnout-signal-icon"><Moon size={16} /></span><span className="burnout-overline">LIFETIME FOCUS</span><strong>{data.progress ? <><CountUp value={data.progress.focusedHours} decimals={1} /> <small>hrs</small></> : '—'}</strong><span className="burnout-signal-note">{data.progress ? 'Backend lifetime total' : 'Not provided'}</span></article>
+              </div>
+            </section>
+            <section className="burnout-panel burnout-behavior"><div className="burnout-section-head"><div><span className="burnout-overline">CURRENTLY AVAILABLE SIGNALS</span><h2>Behavioral Overview</h2></div><span className="burnout-muted-label">LIVE SAVED DATA</span></div><div className="burnout-behavior-grid">{[
+              { label: 'Saved sessions', value: recentSessions.length, suffix: '', note: 'last 7 days', tone: 'blue' },
+              { label: 'Upcoming study time', value: upcomingHours, suffix: 'hrs', note: 'next 7 days · scheduled duration', tone: 'sky' },
+              { label: 'Overdue deadlines', value: overdueDeadlines, suffix: '', note: 'saved academic deadlines', tone: 'amber' },
+            ].map((stat) => <article className={`burnout-behavior-stat tone-${stat.tone}`} key={stat.label}><span>{stat.label}</span><strong><CountUp value={stat.value} decimals={stat.suffix === 'hrs' ? 1 : 0} /><small>{stat.suffix}</small></strong><em>{stat.note}</em></article>)}</div></section>
+            <section className="burnout-analysis-grid">
+              <article className="burnout-panel burnout-trend-panel"><div className="burnout-section-head"><div><span className="burnout-overline">HISTORICAL DATA</span><h2>Burnout Risk Trend</h2></div></div><p className="burnout-panel-subtitle">Daily risk history is not provided by the backend. This estimate does not fabricate a trend.</p></article>
+              <article className="burnout-panel burnout-breakdown-panel"><div className="burnout-section-head"><div><span className="burnout-overline">WHAT IS CONTRIBUTING</span><h2>Risk Breakdown</h2></div><span className="burnout-breakdown-total"><CountUp value={score} /> <small>pts</small></span></div><div className="burnout-factor-list">{factors.length ? factors.map((factor) => <div className="burnout-factor" key={factor.label}><div className="burnout-factor-top"><span>{factor.label}<small>{factor.detail}</small></span><b><CountUp value={factor.points} /><small>pts</small></b></div><div className="burnout-factor-track"><i className={`tone-${factor.tone}`} style={{ width: `${Math.min((factor.points / 35) * 100, 100)}%` }} /></div></div>) : <p className="burnout-panel-subtitle">No elevated pressure factors in the available records.</p>}</div><span className="burnout-breakdown-foot">This deterministic heuristic is not an ML/backend prediction or a medical assessment.</span></article>
+            </section>
+            <section className="burnout-response-grid"><article className="burnout-panel burnout-actions-panel"><div className="burnout-section-head"><div><span className="burnout-overline">SMALL STEPS, GENTLY</span><h2>Recommendations</h2></div></div><div className="burnout-action-list">{recommendations.length ? recommendations.map((recommendation) => <div className="burnout-action" key={recommendation}><button type="button" disabled aria-label="Suggested next step"><ArrowRight size={13} /></button><div><strong>{recommendation}</strong><p>Suggestion based on the current saved study data.</p><span>FRONTEND SUGGESTION</span></div></div>) : <p className="burnout-panel-subtitle">Recommendations are unavailable until study data is saved.</p>}</div></article></section>
+          </>}
+          <aside className="burnout-explanation"><span className="burnout-explanation-icon"><CircleHelp size={18} /></span><div><span className="burnout-overline">A LITTLE CONTEXT</span><h2>How to read this estimate</h2><p>The score is a simple frontend heuristic based on missed saved sessions, overdue deadlines, and scheduled study time. Recovery, daily focus history, and historical burnout data are not available.</p><span className="burnout-disclaimer">Not a backend/ML prediction and not a medical assessment.</span></div><span className="burnout-explanation-mark"><Sparkles size={22} /></span></aside>
+          <footer className="burnout-footer"><span>ADAPTIVE STUDY ECOSYSTEM</span><span>Progress should leave room to recover.</span></footer>
+        </div>
+      </main>
+    </div>
+  </div>;
+}
 
 function CountUp({ value, decimals = 0 }: { value: number; decimals?: number }) {
   const [count, setCount] = useState(() => {
@@ -142,12 +233,34 @@ function RiskTrendChart({ data }: { data: BurnoutTrendPoint[] }) {
 
 export default function BurnoutPage() {
   const [dashboardData, setDashboardData] = useState<BurnoutPageData | null>(null);
+  const [connectedData, setConnectedData] = useState<ConnectedBurnoutData | null>(null);
   const [dataLoadError, setDataLoadError] = useState(false);
   const [completedActions, setCompletedActions] = useState<string[]>([]);
   const [planApplied, setPlanApplied] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    if (hasApiBaseUrl) {
+      void Promise.allSettled([
+        services.student.getProfile(),
+        services.sessions.listSessions(),
+        services.deadlines.listDeadlines(),
+        services.progress.getProgress('ALL TIME'),
+      ]).then((results) => {
+        if (!mounted) return;
+        const errors = results.flatMap((result) => result.status === 'rejected'
+          ? [result.reason instanceof Error ? result.reason.message : 'A connected study data request failed.']
+          : []);
+        setConnectedData({
+          profile: results[0].status === 'fulfilled' ? results[0].value : null,
+          sessions: results[1].status === 'fulfilled' ? results[1].value : null,
+          deadlines: results[2].status === 'fulfilled' ? results[2].value : null,
+          progress: results[3].status === 'fulfilled' ? results[3].value : null,
+          errors,
+        });
+      });
+      return () => { mounted = false; };
+    }
     void burnoutService.getDashboardData()
       .then((result) => {
         if (mounted) setDashboardData(result);
@@ -162,7 +275,7 @@ export default function BurnoutPage() {
   }, []);
 
   useEffect(() => {
-    if (!dashboardData) return;
+    if (!dashboardData && !connectedData) return;
     const sections = Array.from(document.querySelectorAll<HTMLElement>('.burnout-app [data-burnout-reveal]'));
     if (!sections.length) return;
 
@@ -183,7 +296,12 @@ export default function BurnoutPage() {
 
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, [dashboardData]);
+  }, [dashboardData, connectedData]);
+
+  if (hasApiBaseUrl) {
+    if (!connectedData) return <div className="site-shell burnout-app"><div className="burnout-data-state" role="status">Loading connected study signals…</div></div>;
+    return <ConnectedBurnout data={connectedData} />;
+  }
 
   if (!dashboardData) {
     return (

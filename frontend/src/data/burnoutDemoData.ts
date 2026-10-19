@@ -92,8 +92,8 @@ export const burnoutDemoData: BurnoutPageData = {
     rangeLabel: 'OCT 21 — 27',
   },
   student: {
-    initials: 'AM',
-    name: 'Alex Morgan',
+    initials: 'ST',
+    name: 'Student',
     program: 'Computer Science · Year 2',
   },
   risk: {

@@ -7,6 +7,7 @@ import type {
   ProgressRange,
   ProgressSummary,
   StudentProfile,
+  StudentSubject,
   StudentProfileUpdate,
   StudyPriority,
   StudySession,
@@ -38,7 +39,12 @@ type BackendProfile = {
   student_name: string;
   subjects: BackendSubject[];
   availability?: BackendAvailability[];
-  preferences?: { preferred_session?: string; break_minutes?: number } | null;
+  preferences?: {
+    preferred_session?: string;
+    break_minutes?: number;
+    daily_goal_hours?: number;
+    focus_time?: StudentProfile['preferences']['focusTime'];
+  } | null;
 };
 
 type BackendAvailabilityResponse = {
@@ -93,7 +99,7 @@ async function accessToken(): Promise<string> {
   return data.session.access_token;
 }
 
-async function studentId(): Promise<string> {
+async function studentIdentity(): Promise<{ id: string; email: string }> {
   if (!supabase) {
     throw configurationError('Supabase Auth is not configured.');
   }
@@ -101,7 +107,14 @@ async function studentId(): Promise<string> {
   if (error) throw error;
   if (!data.user) throw configurationError('Sign in with Supabase Auth before loading student data.');
   const configuredId = data.user.user_metadata.student_id;
-  return typeof configuredId === 'string' && configuredId.trim() ? configuredId : data.user.id;
+  return {
+    id: typeof configuredId === 'string' && configuredId.trim() ? configuredId : data.user.id,
+    email: data.user.email ?? '',
+  };
+}
+
+async function studentId(): Promise<string> {
+  return (await studentIdentity()).id;
 }
 
 async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -133,21 +146,62 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 function formatHour(value: string | number | undefined, fallback: number): number {
-  if (typeof value === 'number') return value;
+  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 && value <= 23 ? value : fallback;
   const hour = Number(value?.slice(0, 2));
   return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : fallback;
+}
+
+const knownSubjectNamesById = new Map([
+  ['it-3444874be53248f1ae57593dd6ee373a', 'Computer Networks'],
+]);
+
+function displaySubjectName(value?: string, subjectId?: string): string {
+  const knownName = subjectId ? knownSubjectNamesById.get(subjectId.toLowerCase()) : undefined;
+  if (knownName) return knownName;
+
+  const name = value?.trim() ?? '';
+  if (name.toLowerCase() === 'maths') return 'Mathematics';
+  const containsIdentifier = /\b(?:it[-_])?[a-f0-9]{16,}\b/i.test(name)
+    || /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(name);
+  const isTestLabel = /\b(?:integration\s+test\s+subject|test\s+subject)\b/i.test(name);
+  const isIdentifier = /^(?:it[-_])?[a-f0-9]{8,}$/i.test(name)
+    || /^[a-z][a-z0-9_-]{19,}$/i.test(name);
+  if (!name || containsIdentifier || isTestLabel || isIdentifier) return 'Subject';
+  return name.split(/\s+/).map((word) => (
+    word.length <= 3 && word === word.toUpperCase()
+      ? word
+      : `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`
+  )).join(' ');
+}
+
+function displayStudentName(value?: string): string {
+  const name = value?.trim() ?? '';
+  const containsIdentifier = /\b(?:it[-_])?[a-f0-9]{16,}\b/i.test(name)
+    || /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(name);
+  const isTestLabel = /\b(?:integration\s+test|test\s+student)\b/i.test(name);
+  const isIdentifier = /^(?:it[-_])?[a-f0-9]{8,}$/i.test(name)
+    || /^[a-z][a-z0-9_-]{19,}$/i.test(name);
+  return name && !containsIdentifier && !isTestLabel && !isIdentifier ? name : 'Student';
 }
 
 function toProfile(dto: BackendProfile, email = ''): StudentProfile {
   const availability = dto.availability ?? [];
   const preferences = dto.preferences;
   const firstPeriod = availability[0];
-  const fullName = dto.student_name || 'Student';
+  const fullName = displayStudentName(dto.student_name);
   return {
     id: dto.student_id,
     fullName,
     email,
     displayName: fullName.split(/\s+/)[0] ?? fullName,
+    subjects: dto.subjects.map((subject): StudentSubject => ({
+      id: subject.subject_id,
+      name: displaySubjectName(subject.subject_name, subject.subject_id),
+      previousMarks: subject.previous_marks,
+      examCount: subject.exam_count,
+      completedSessions: subject.completed_sessions_count ?? 0,
+      missedSessions: subject.missed_sessions_count ?? 0,
+    })),
     timezone: 'UTC',
     school: '',
     program: '',
@@ -158,9 +212,20 @@ function toProfile(dto: BackendProfile, email = ''): StudentProfile {
       preferredSession: preferences?.preferred_session === '2h' || preferences?.preferred_session === '2-3h'
         ? preferences.preferred_session
         : '1h',
-      breakLengthMinutes: preferences?.break_minutes ?? 10,
-      dailyGoalHours: 2,
-      focusTime: 'flexible',
+      breakLengthMinutes: typeof preferences?.break_minutes === 'number'
+        && Number.isFinite(preferences.break_minutes)
+        && preferences.break_minutes > 0
+        ? preferences.break_minutes
+        : 10,
+      dailyGoalHours: typeof preferences?.daily_goal_hours === 'number'
+        && Number.isFinite(preferences.daily_goal_hours)
+        && preferences.daily_goal_hours > 0
+        ? preferences.daily_goal_hours
+        : 3,
+      focusTime: preferences?.focus_time
+        && ['morning', 'afternoon', 'evening', 'flexible'].includes(preferences.focus_time)
+        ? preferences.focus_time
+        : 'evening',
       availableDays: [...new Set(availability.map((period) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][period.day_of_week]).filter(Boolean))],
       availabilityStartHour: formatHour(firstPeriod?.start_time, 9),
       availabilityEndHour: formatHour(firstPeriod?.end_time, 18),
@@ -196,7 +261,7 @@ function weekDay(date: string): string {
 
 function mapSession(dto: BackendSession, subjects: Map<string, string>): CustomSession {
   const start = dto.start_time.slice(0, 5);
-  const subject = subjects.get(dto.subject_id) ?? dto.subject_id;
+  const subject = displaySubjectName(subjects.get(dto.subject_id), dto.subject_id);
   return {
     id: String(dto.session_id),
     day: weekDay(dto.session_date),
@@ -227,7 +292,9 @@ function mapStudySession(session: CustomSession): StudySession {
         })()}:00`
       : undefined,
     durationMinutes: Number.parseInt(session.length, 10) || 0,
-    status: status === 'completed' || status === 'missed' || status === 'skipped' || status === 'accepted'
+    status: status === 'scheduled' || status === 'planned' || status === 'pending'
+      || status === 'in-progress' || status === 'completed' || status === 'missed'
+      || status === 'skipped' || status === 'accepted'
       ? status
       : 'planned',
   };
@@ -239,7 +306,7 @@ function mapDeadline(dto: BackendDeadline, subjectNames: Map<string, string>): D
   return {
     id: String(dto.deadline_id ?? `${dto.subject_id}-${dueAt}-${dto.title}`),
     title: dto.title,
-    subject: subjectNames.get(dto.subject_id) ?? dto.subject_id,
+    subject: displaySubjectName(subjectNames.get(dto.subject_id), dto.subject_id),
     subjectId: dto.subject_id,
     dueAt,
     status,
@@ -258,11 +325,6 @@ const auth = {
     if (!supabase) throw configurationError('Supabase Auth is not configured.');
     const { data, error } = await supabase.auth.signInWithPassword({ email: input.email, password: input.password });
     if (error) throw error;
-    await supabase.auth.updateUser({
-      data: {
-        student_id: "it-3444874be53248f1ae57593dd6ee373a",
-      },
-    });
     if (!data.user) throw configurationError('Supabase Auth did not return a user.');
     return { user: { id: data.user.id, email: data.user.email ?? input.email, displayName: String(data.user.user_metadata.display_name ?? data.user.user_metadata.full_name ?? input.email) } };
   },
@@ -300,11 +362,10 @@ export const backendServices: FrontendServices = {
   auth,
   student: {
     async getProfile() {
-      const id = await studentId();
-      const profile = await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(id)}`);
+      const identity = await studentIdentity();
+      const profile = await apiRequest<BackendProfile>(`/api/v1/students/${encodeURIComponent(identity.id)}`);
       cachedProfile = profile;
-      const session = await auth.getCurrentSession();
-      return toProfile(profile, session?.user.email);
+      return toProfile(profile, identity.email);
     },
     async updateProfile(update: StudentProfileUpdate) {
       const id = await studentId();
@@ -413,7 +474,19 @@ export const backendServices: FrontendServices = {
   progress: {
     async getProgress(_range: ProgressRange): Promise<ProgressSummary> {
       const id = await studentId();
-      const result = await apiRequest<{ completed_sessions: number; missed_sessions: number; study_hours: number }>(
+      const result = await apiRequest<{
+        completed_sessions: number;
+        missed_sessions: number;
+        study_hours: number;
+        subjects?: Array<{
+          subject_id: string;
+          subject_name: string;
+          previous_marks: number;
+          completed_sessions: number;
+          missed_sessions: number;
+          study_hours: number;
+        }>;
+      }>(
         `/api/v1/students/${encodeURIComponent(id)}/progress`,
       );
       return {
@@ -424,6 +497,14 @@ export const backendServices: FrontendServices = {
         streakDays: null,
         weeklyGoalHours: null,
         daily: [],
+        subjects: result.subjects?.map((subject) => ({
+          subjectId: subject.subject_id,
+          subjectName: displaySubjectName(subject.subject_name, subject.subject_id),
+          previousMarks: subject.previous_marks,
+          completedSessions: subject.completed_sessions,
+          missedSessions: subject.missed_sessions,
+          focusedHours: subject.study_hours,
+        })),
       };
     },
   },
@@ -463,8 +544,8 @@ export const backendServices: FrontendServices = {
       const result = await apiRequest<{ predictions: BackendPriority[] }>(`/api/v1/students/${encodeURIComponent(id)}/priorities`, { method: 'POST', body: '{}' });
       return result.predictions.map((item, index): StudyPriority => ({
         id: item.subject_id,
-        title: item.subject_name,
-        subject: item.subject_name,
+        title: displaySubjectName(item.subject_name, item.subject_id),
+        subject: displaySubjectName(item.subject_name, item.subject_id),
         rank: index + 1,
         reason: item.reason ?? item.recommendations?.[0],
         previousMarks: typeof item.previous_marks === 'number' ? item.previous_marks : undefined,
